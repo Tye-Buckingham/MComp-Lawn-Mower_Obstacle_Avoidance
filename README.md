@@ -29,4 +29,4 @@
 ![Testing_Obstacle_Avoidance_Animated](./Images/No_Xray_Vision_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Seperate_Objects_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Smaller_LiDAR_Distance_SM.gif)
-![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_No_Mapping_SM.gif)
+![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_No_Mapping_Unknown_Obstacles_SM.gif)
