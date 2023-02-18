@@ -10,6 +10,7 @@
 
   * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
   * 17/02/2023: Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
+  * 18/02/2023: Tested on coverage map generated without known obstacles.
  
 # TODO 
 
@@ -28,3 +29,4 @@
 ![Testing_Obstacle_Avoidance_Animated](./Images/No_Xray_Vision_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Seperate_Objects_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Smaller_LiDAR_Distance_SM.gif)
+![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_No_Mapping_SM.gif)
