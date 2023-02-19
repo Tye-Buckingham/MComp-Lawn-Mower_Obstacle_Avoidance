@@ -1,4 +1,2 @@
-.gitattributes
-.gitignore 
 *~
 flycheck_lidar_sim.py
