@@ -33,11 +33,11 @@
 	  
   * Follow this route with unknown obstacles within
   
-  ![Testing_Obstacle_Avoidance_Animated](./Images/Following_Route.gif)
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Slightly_Improved_Final_Route.gif)
   
   * Without map matching to the route this gives the following result
   
-  ![Testing_Obstacle_Avoidance_Animated](./Images/Final_Coverage.png)
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Slightly_Improved_Final_Coverage_SM.png)
   
   * Applying map matching is the next step and should improve the total coverage
   

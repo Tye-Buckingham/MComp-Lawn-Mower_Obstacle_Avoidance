@@ -136,6 +136,12 @@ class Robot:
                                 line.intersection(edge).y,
                         ]) > utm_dist([self.x, self.y], target):
                             continue
+                        # If the distance is far away don't consider
+                        if utm_dist([self.x, self.y], [
+                                line.intersection(edge).x,
+                                line.intersection(edge).y,
+                        ]) > lidar_dist:
+                            continue
                         for j in range(len(points)):
                             if get_line([
                                     self.x, self.y
@@ -150,6 +156,7 @@ class Robot:
         # Once all relevant points are found, determine which to handle first
         if len(points) > 0:
             points = self.find_nearest(points)
+
         return points
 
     def closer_point(self, p1, p2):
@@ -275,6 +282,11 @@ class Robot:
 def print_graph(mower, test_shape, nogos, path, current, target, img,
                 detected):
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
+    plt.plot(path[:, 0],
+             path[:, 1],
+             linestyle='dotted',
+             alpha=0.5,
+             color='orange')
     plt.plot(test_shape[:, 0], test_shape[:, 1])
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
@@ -288,7 +300,7 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.scatter(path[target, 0], path[target, 1])
     plt.axis('off')
     plt.savefig("./Imgs/look_position_" + str(img) + ".png")
-    plt.clf()
+    plt.close()
 
 
 def utm_dist(p1, p2):
@@ -366,8 +378,8 @@ def lidar_intersecting(centre, left, right, mower, detected_line):
                 NORTHING: mower.y,
                 ELEVATION: 0
             }, {
-                EASTING: r_int.x,
-                NORTHING: r_int.y,
+                EASTING: l_int.x,
+                NORTHING: l_int.y,
                 ELEVATION: 0
             })
         r_dist = bearing_distance_from_coordinates(
@@ -376,8 +388,8 @@ def lidar_intersecting(centre, left, right, mower, detected_line):
                 NORTHING: mower.y,
                 ELEVATION: 0
             }, {
-                EASTING: l_int.x,
-                NORTHING: l_int.y,
+                EASTING: r_int.x,
+                NORTHING: r_int.y,
                 ELEVATION: 0
             })
         if l_dist['dist_2d'] < r_dist['dist_2d']:
@@ -413,7 +425,7 @@ def main():
     path = np.loadtxt("./route.out", dtype=float, delimiter=",")
     path_len = len(path)
     current = 0
-    target = 1
+    target = current + 1
 
     ## Convert Lat, Long to Northing, Easting (UTM)
     test_shape = to_utm(test_shape)
@@ -438,7 +450,7 @@ def main():
     mower.visited = np.vstack((mower.visited, [path[0, 0], path[0, 1]]))
 
     mower.lidar_range()
-    centre_lines = mower.lidar_range()[0][30]
+    centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
     left_lines = mower.lidar_range()[0][0]
     right_lines = mower.lidar_range()[0][-1]
 
@@ -476,7 +488,7 @@ def main():
                 break
             # Currently only considering the left most, centre, and right most
             # will split into ranges in future testing
-            centre_lines = mower.lidar_range()[0][30]
+            centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
             left_lines = mower.lidar_range()[0][0]
             right_lines = mower.lidar_range()[0][-1]
             lidar_intersect, side = lidar_intersecting(centre_lines,
@@ -496,11 +508,11 @@ def main():
                 # Once no obstacles are found, break to move foward
                 if detected_line is None:
                     break
-                centre_lines = mower.lidar_range()[0][30]
+                centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
                 left_lines = mower.lidar_range()[0][0]
                 right_lines = mower.lidar_range()[0][-1]
                 m += 1
-                print(m)
+                print(bear[m])
                 # If no turning options left, end. - Handle points impossible to reach
                 if m == len(bear) - 1:
                     print(side)
@@ -519,6 +531,18 @@ def main():
         current += 1
         target += 1
 
+    s = gpd.GeoSeries([
+        LineString(
+            gpd.points_from_xy(x=mower.visited[:, 0], y=mower.visited[:, 1])),
+    ])
+
+    f, ax = plt.subplots()
+    plt.axis('off')
+    s.buffer(0.15).plot(alpha=0.5, ax=ax)
+    plt.plot(test_shape[:, 0], test_shape[:, 1])
+    for nogo in nogos:
+        plt.plot(nogo[:, 0], nogo[:, 1])
+    plt.show()
     print(mower.visited)
 
 
