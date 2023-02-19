@@ -37,7 +37,7 @@
   
   * Without map matching to the route this gives the following result
   
-  ![Testing_Obstacle_Avoidance_Animated](./Images/Slightly_Improved_Final_Coverage_SM.png)
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Slightly_Improved_Final_Coverage.png)
   
   * Applying map matching is the next step and should improve the total coverage
   
