@@ -33,6 +33,8 @@
 	  
   * Follow this route with unknown obstacles within
   
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Following_Route.gif)
+  
 # Tasks
 
   * What level of route overlap do we need? 
@@ -57,6 +59,7 @@
 # References
 
 The algorithm in its current state is based primarily on the work found in:
+
 Peng, Y., Qu, D., Zhong, Y., Xie, S., Luo, J., & Gu, J. (2015, August). The obstacle detection and obstacle avoidance algorithm based on 2-d lidar. In 2015 IEEE international conference on information and automation (pp. 1648-1653). IEEE.
 
 Further reading has been and will continue to be conducted therefore, this section will be updated when ever the implementation draws from those sources.
