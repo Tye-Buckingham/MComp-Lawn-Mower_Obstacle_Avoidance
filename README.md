@@ -29,7 +29,7 @@
   * Reduce the number of points by remove those along the same line
       * This reduces the memory requirements but also reduces the chances a point is within an unknown object
 	  
-  ![Testing_Obstacle_Avoidance_Animated](./Images/Direction_Change_Route_.png)
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Direction_Change_Route.png)
 	  
   * Follow this route with unknown obstacles within
   
