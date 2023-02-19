@@ -35,6 +35,12 @@
   
   ![Testing_Obstacle_Avoidance_Animated](./Images/Following_Route.gif)
   
+  * Without map matching to the route this gives the following result
+  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Final_Coverage.png)
+  
+  * Applying map matching is the next step and should improve the total coverage
+  
 # Tasks
 
   * What level of route overlap do we need? 
