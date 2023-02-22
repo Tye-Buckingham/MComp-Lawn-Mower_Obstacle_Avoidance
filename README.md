@@ -50,9 +50,8 @@
   * What else, other than RTK inaccuracy, will affect our route?
   * What is an acceptable time to compute, total route distance, and time to complete route.
 
-# Examples
+# Progress
 
-	These examples can be found in larger verisions within './Images'
 	
 ![Testing_Obstacle_Avoidance_Animated](./Images/Target_Focused_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Endpoint_Focused_SM.gif)
