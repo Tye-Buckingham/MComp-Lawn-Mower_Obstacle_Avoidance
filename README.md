@@ -19,6 +19,7 @@
   * [x] Stop the robot seeing through walls
   * [ ] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
   * [ ] Combine with route mapping - if off course and no obstacles, move back to route.
+  * [ ] Move robot to end of detected end point
 
 # Current Pipeline
 
