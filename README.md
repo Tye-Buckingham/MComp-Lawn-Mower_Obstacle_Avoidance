@@ -42,6 +42,13 @@
   
   * Applying map matching is the next step and should improve the total coverage
   
+  
+  * Using the robot's location and points detected from the LiDAR unknown objects can be detected
+      * These points can be sent back to the server for a more optimal coverage map
+      * This method could also be applied to improve the digital map's accuracy
+	  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Detected_Boundaries.png)
+  
 # Tasks
 
   * What level of route overlap do we need? 
