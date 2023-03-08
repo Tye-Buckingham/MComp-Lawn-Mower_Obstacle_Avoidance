@@ -9,9 +9,11 @@
 # Changelog 
 
   * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
-  * 17/02/2023: Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
+      * Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
   * 18/02/2023: Tested on coverage map generated without known obstacles.
   * 08/03/2023: Integrated the route traversal methods from the `Mapping` repo
+      * Fixed incorrect back-on-track point
+      * Removed section instructing robot to move within the line detection method
  
 # TODO 
 
@@ -24,7 +26,6 @@
   
 # Known Issues
 
-  * When deciding a point to traverse to when off course, some points are not between the origin and destination as intended
   * Integrating the route traversal has produced some undesirable code and logic issues - **priority**
 
 # Current Pipeline
@@ -59,6 +60,14 @@
   
   ![Testing_Obstacle_Avoidance_Animated](./Images/Integrated_MapMatching.gif)
   
+	  When the robot is considered off course a new target point is determined.
+	  This point lies on the line between the origin and current destination, 
+	  initially it is the closest point on the line to the robot. However,
+	  this creates problems when an obstacle is between it and this new point - 
+	  the robot is most often off course when avoiding obstacles. In an attempt to 
+	  avoid obstacles and move in the correct direction the new point is offset
+	  by some value. It appears, the greater the value the less chance of getting stuck, 
+	  but the lower total coverage.
   
   ![Testing_Obstacle_Avoidance_Animated](./Images/Integrated_MapMatching_Coverage.png)
   
@@ -70,6 +79,8 @@
       * Can we find a middle ground or should we perform multiple different routes to account for the innacuracy.
   * What else, other than RTK inaccuracy, will affect our route?
   * What is an acceptable time to compute, total route distance, and time to complete route.
+  * Testing different off course offset values.
+  * Test functions to generate random arenas to produce coverage routes, traverse, and report if successfuly traversed.
 
 # Progress
 

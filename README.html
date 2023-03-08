@@ -17,10 +17,16 @@
 <p>UTM has been chosen as the distance the lawn mower will travel is small enough such that the curvature of the Earth is thought to have negligible affect on accuracy. UTM also provides an easy way to traverse the space in metres, using the compass on the robot.</p>
 <h1 id="changelog">Changelog</h1>
 <ul>
-<li>17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn’t be needed in real-life.</li>
-<li>17/02/2023: Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.</li>
+<li>17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn’t be needed in real-life.
+<ul>
+<li>Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.</li>
+</ul></li>
 <li>18/02/2023: Tested on coverage map generated without known obstacles.</li>
-<li>08/03/2023: Integrated the route traversal methods from the <code>Mapping</code> repo</li>
+<li>08/03/2023: Integrated the route traversal methods from the <code>Mapping</code> repo
+<ul>
+<li>Fixed incorrect back-on-track point</li>
+<li>Removed section instructing robot to move within the line detection method</li>
+</ul></li>
 </ul>
 <h1 id="todo">TODO</h1>
 <ul>
@@ -35,7 +41,6 @@
 </ul>
 <h1 id="known-issues">Known Issues</h1>
 <ul>
-<li>When deciding a point to traverse to when off course, some points are not between the origin and destination as intended</li>
 <li>Integrating the route traversal has produced some undesirable code and logic issues - <strong>priority</strong></li>
 </ul>
 <h1 id="current-pipeline">Current Pipeline</h1>
@@ -83,6 +88,14 @@
 <figure>
 <img src="./Images/Integrated_MapMatching.gif" alt="Testing_Obstacle_Avoidance_Animated" /><figcaption>Testing_Obstacle_Avoidance_Animated</figcaption>
 </figure>
+<pre><code>  When the robot is considered off course a new target point is determined.
+  This point lies on the line between the origin and current destination, 
+  initially it is the closest point on the line to the robot. However,
+  this creates problems when an obstacle is between it and this new point - 
+  the robot is most often off course when avoiding obstacles. In an attempt to 
+  avoid obstacles and move in the correct direction the new point is offset
+  by some value. It appears, the greater the value the less chance of getting stuck, 
+  but the lower total coverage.</code></pre>
 <figure>
 <img src="./Images/Integrated_MapMatching_Coverage.png" alt="Testing_Obstacle_Avoidance_Animated" /><figcaption>Testing_Obstacle_Avoidance_Animated</figcaption>
 </figure>
@@ -96,6 +109,8 @@
 </ul></li>
 <li>What else, other than RTK inaccuracy, will affect our route?</li>
 <li>What is an acceptable time to compute, total route distance, and time to complete route.</li>
+<li>Testing different off course offset values.</li>
+<li>Test functions to generate random arenas to produce coverage routes, traverse, and report if successfuly traversed.</li>
 </ul>
 <h1 id="progress">Progress</h1>
 <p><img src="./Images/Target_Focused_SM.gif" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Endpoint_Focused_SM.gif" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/No_Xray_Vision_SM.gif" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Seperate_Objects_SM.gif" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Smaller_LiDAR_Distance_SM.gif" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Coverage_No_Mapping_Unknown_Obstacles_SM.gif" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Integrated_MapMatching_SM.gif.gif" alt="Testing_Obstacle_Avoidance_Animated" /></p>

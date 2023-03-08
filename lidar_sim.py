@@ -12,6 +12,7 @@
 
 import glob
 import math
+import os
 import sys
 import warnings
 
@@ -22,6 +23,7 @@ import utm
 from mathutils import Vector
 from mathutils.geometry import intersect_point_line
 from shapely.geometry import LineString, Point, Polygon
+
 from surveytoolbox.bdc import bearing_distance_from_coordinates
 from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
@@ -296,33 +298,9 @@ class Robot:
         if len(objs) != 0:
             self.heading += heading
             objs = self.detect_objects([nogos], path[target])
-        # If no object in between target and robot, go straight to it
-        while len(objs) == 0:
-            self.move(move_dist, path[target])
-            if target == -1:
-                t = 1
-            else:
-                t = target
-            self.enqueue(self.is_outside_buffer(path, current, t))
-            self.visited = np.vstack((self.visited, [self.x, self.y]))
-            print_graph(self, test_shape, nogos, path, current, target, img,
-                        None)
-            img += 1
-            # 0.2 being the range of innacuracy, consider the point reached
-            if utm_dist([self.x, self.y], path[target]) <= 0.2 or utm_dist(
-                [self.x, self.y], path[t]) <= 0.2:
-                self.clear_q()
-                return None, img
-            if self.is_off_course():
-                return None, img
-            if not self.is_off_course() and target == -1:
-                return None, img
-            self.find_target(path[target])
-            objs = self.detect_objects([nogos], path[target])
-            if len(objs) != 0:
-                self.heading += heading
-                objs = self.detect_objects([nogos], path[target])
-            # If enough to make a shape, take the bounds of that shape
+        # If enough to make a shape, take the bounds of that shape
+        if len(objs) == 0:
+            return None, img
         if len(objs) >= 3:
             detected_points = Polygon(objs)
             detected_targets = detected_points.bounds
@@ -514,6 +492,7 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
                         detected_line)
             img += 1
             m = 0
+            # Returning to re-calculate tempoary target
             if mower.is_off_course():
                 return img
             continue
@@ -587,7 +566,7 @@ def main():
     test_shape = np.loadtxt("./perimeter.out", dtype=float, delimiter=",")
     path = np.loadtxt("./route.out", dtype=float, delimiter=",")
     path_len = len(path)
-    current = 0
+    current = 24
     target = current + 1
 
     ## Convert Lat, Long to Northing, Easting (UTM)
@@ -606,8 +585,6 @@ def main():
             NORTHING: path[target, 1],
             ELEVATION: 0
         })
-
-    print(target_loc)
 
     mower = Robot(path[current, 0], path[current, 1], target)
     mower.visited = np.vstack((mower.visited, [path[0, 0], path[0, 1]]))
@@ -639,7 +616,6 @@ def main():
         val for pair in zip(list(range(0, 180, 4)), list(range(0, -180, -4)))
         for val in pair
     ]
-    m = 0
     img = 0
 
     while target < path_len:
@@ -648,18 +624,9 @@ def main():
             target += 1
             continue
         if mower.is_off_course():
-            p = perpen_point([mower.x, mower.y], path[target - 1],
-                             path[target])
-            n = 0
-            while math.isnan(p[0]) or math.isnan(p[1]):
-                p = intersect_point_line(
-                    Vector([mower.x, mower.y]),
-                    Vector([
-                        path[target - 1][0] + (0.00001 * n),
-                        path[target - 1][1] + (0.00001 * n)
-                    ]), Vector(path[target]))
-                n += 1
-
+            p = perpen_point([mower.x, mower.y], path[current], path[target])
+            print(current)
+            print(target)
             if utm_dist([mower.x, mower.y], p) <= 0.2 or utm_dist(
                 [mower.x, mower.y], path[target]) <= 0.2:
                 mower.clear_q()
@@ -674,8 +641,6 @@ def main():
             img = avoidance(mower, path, target, nogos, centre_line,
                             test_shape, current, img, right_bear, left_bear,
                             centre_bear)
-            current += 1
-            target += 1
 
     s = gpd.GeoSeries([
         LineString(
