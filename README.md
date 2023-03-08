@@ -27,6 +27,9 @@
 # Known Issues
 
   * Integrating the route traversal has produced some undesirable code and logic issues - **priority**
+  * Robot is seen doubly back on itself when off course to find a way round.
+	Will test different movement amounts, number of off course points and off course point offset
+	to determine if these can reduce this issue or whether more realistic movement may make it worse.
 
 # Current Pipeline
 
