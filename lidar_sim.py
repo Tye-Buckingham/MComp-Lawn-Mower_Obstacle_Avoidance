@@ -13,11 +13,14 @@
 import glob
 import math
 import sys
+import warnings
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
 import utm
+from mathutils import Vector
+from mathutils.geometry import intersect_point_line
 from shapely.geometry import LineString, Point, Polygon
 from surveytoolbox.bdc import bearing_distance_from_coordinates
 from surveytoolbox.cbd import coordinates_from_bearing_distance
@@ -28,6 +31,14 @@ lidar_range = 60
 lidar_dist = 1
 move_dist = 0.3
 lidar_width = 15
+
+detected_ends = []
+
+QUEUE_LEN = 10
+ON_COURSE = 0
+OFF_COURSE = 1
+Q_SIZE = 10
+MAX_SPEED = 0.6
 
 
 class Robot:
@@ -42,6 +53,39 @@ class Robot:
         self.visited = np.empty((0, 2))
         self.heading = float()
         self.target = target
+        self.inside = [0] * Q_SIZE
+
+    def enqueue(self, val):
+        for i in range(len(self.inside) - 1):
+            self.inside[i + 1] = self.inside[i + 1] ^ self.inside[i]
+            self.inside[i] = self.inside[i + 1] ^ self.inside[i]
+            self.inside[i + 1] = self.inside[i + 1] ^ self.inside[i]
+        self.inside[len(self.inside) - 1] = val
+
+    def per_on_course(self):
+        res = len(self.inside)
+        for i in self.inside:
+            res -= i
+        res /= len(self.inside)
+        return res
+
+    def is_off_course(self):
+        if self.per_on_course() < 0.6:
+            return OFF_COURSE
+        return ON_COURSE
+
+    def clear_q(self):
+        self.inside = [0] * Q_SIZE
+
+    def is_outside_buffer(self, path, current, target):
+        p2 = path[target]
+        p1 = path[current]
+        p3 = [self.x, self.y]
+        per_dist = np.linalg.norm(np.cross(p2 - p1,
+                                           p1 - p3)) / np.linalg.norm(p2 - p1)
+        if per_dist > 0.2:
+            return OFF_COURSE
+        return ON_COURSE
 
     def lidar_range(self):
         """Generate an array of lines at different angles to simulate
@@ -122,6 +166,7 @@ class Robot:
             All objects within range of the robot.
         """
         points = []
+        global detected_ends
         lidar_lines = self.lidar_range()[0]
         for nogo in nogos[0]:  # For each object
             for i in range(-1, len(nogo) - 1):  # Loop over each corner
@@ -131,6 +176,7 @@ class Robot:
                 for line in lidar_lines:
                     if line.intersects(edge):
                         # If the detected object is behind the target don't consider it
+                        detected_ends.append(line.intersection(edge))
                         if utm_dist([self.x, self.y], [
                                 line.intersection(edge).x,
                                 line.intersection(edge).y,
@@ -193,6 +239,7 @@ class Robot:
         # move directly to the target as there are no obstacles
         # in the way
         if self.heading == target_loc['bg'] and target_loc['dist_2d'] < 0.5:
+            self.clear_q()
             metres = (target_loc['dist_2d'] - 0.15)
         pos = coordinates_from_bearing_distance(
             {
@@ -252,12 +299,23 @@ class Robot:
         # If no object in between target and robot, go straight to it
         while len(objs) == 0:
             self.move(move_dist, path[target])
+            if target == -1:
+                t = 1
+            else:
+                t = target
+            self.enqueue(self.is_outside_buffer(path, current, t))
             self.visited = np.vstack((self.visited, [self.x, self.y]))
             print_graph(self, test_shape, nogos, path, current, target, img,
                         None)
             img += 1
             # 0.2 being the range of innacuracy, consider the point reached
-            if utm_dist([self.x, self.y], path[target]) <= 0.2:
+            if utm_dist([self.x, self.y], path[target]) <= 0.2 or utm_dist(
+                [self.x, self.y], path[t]) <= 0.2:
+                self.clear_q()
+                return None, img
+            if self.is_off_course():
+                return None, img
+            if not self.is_off_course() and target == -1:
                 return None, img
             self.find_target(path[target])
             objs = self.detect_objects([nogos], path[target])
@@ -265,7 +323,7 @@ class Robot:
                 self.heading += heading
                 objs = self.detect_objects([nogos], path[target])
             # If enough to make a shape, take the bounds of that shape
-        if len(objs) >= 4:
+        if len(objs) >= 3:
             detected_points = Polygon(objs)
             detected_targets = detected_points.bounds
             detected_line = LineString(
@@ -274,14 +332,16 @@ class Robot:
         elif len(objs) == 1:
             detected_line = objs[0]
             # Otherwise take a line
-        else:
+        elif len(objs) == 2:
             detected_line = LineString(objs)
         return detected_line, img
 
 
 def print_graph(mower, test_shape, nogos, path, current, target, img,
                 detected):
+
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
+
     plt.plot(path[:, 0],
              path[:, 1],
              linestyle='dotted',
@@ -291,19 +351,28 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
     plt.plot(*centre_line.xy)
-    plt.scatter(mower.x, mower.y, color='blue')
+    if mower.is_off_course():
+        mower_colour = 'red'
+    else:
+        mower_colour = 'blue'
+    plt.scatter(mower.x, mower.y, color=mower_colour)
+
     if detected is not None:
         plt.scatter(detected.xy[0], detected.xy[1], color='red')
     for nogo in nogos:
         plt.plot(nogo[:, 0], nogo[:, 1])
+
     plt.scatter(path[current, 0], path[current, 1])
     plt.scatter(path[target, 0], path[target, 1])
     plt.axis('off')
     plt.savefig("./Imgs/look_position_" + str(img) + ".png")
-    plt.close()
+    plt.close('all')
 
 
 def utm_dist(p1, p2):
+    if math.isnan(p1[0]) or math.isnan(p2[0]):
+        raise Exception("NAN")
+
     dist = bearing_distance_from_coordinates(
         {
             EASTING: p1[0],
@@ -368,7 +437,7 @@ def lidar_intersecting(centre, left, right, mower, detected_line):
     c = centre.intersects(detected_line)
     if c:
         return True, 0
-    if l and r and not c:
+    if l and r:
         l_int = left.intersection(detected_line)
         r_int = right.intersection(detected_line)
 
@@ -412,8 +481,102 @@ def get_line(a, b):
     return m, c
 
 
-def main():
+def perpen_point(p, a, b):
+    k = ((b[1] - a[1]) * (p[0] - a[0]) - (b[0] - a[0]) * (p[1] - a[1])) / (pow(
+        (b[1] - a[1]), 2) + pow((b[0] - a[0]), 2))
+    x4 = p[0] - k * (b[1] - a[1])
+    y4 = p[1] + k * (b[0] - a[0])
+    return np.array([x4, y4])
 
+
+def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
+              img, right_bear, left_bear, centre_bear):
+
+    while utm_dist([mower.x, mower.y], path[target]) > 0.2:
+        m = 0
+        detected_line, img = mower.get_detected_line(target, nogos, 0,
+                                                     centre_line, test_shape,
+                                                     current, img, path)
+
+        # If no detected objects, break to move forward
+        if detected_line is None:
+            mower.move(move_dist, path[target])
+            if target == -1:
+                t = 1
+            else:
+                t = target
+            mower.enqueue(mower.is_outside_buffer(path, current, t))
+            mower.visited = np.vstack((mower.visited, [mower.x, mower.y]))
+            gpd.GeoSeries(mower.lidar_range()[1]).plot()
+            plt.plot(test_shape[:, 0], test_shape[:, 1])
+
+            print_graph(mower, test_shape, nogos, path, current, target, img,
+                        detected_line)
+            img += 1
+            m = 0
+            if mower.is_off_course():
+                return img
+            continue
+        # Currently only considering the left most, centre, and right most
+        # will split into ranges in future testing
+        centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
+        left_lines = mower.lidar_range()[0][0]
+        right_lines = mower.lidar_range()[0][-1]
+        lidar_intersect, side = lidar_intersecting(centre_lines, left_lines,
+                                                   right_lines, mower,
+                                                   detected_line)
+        while lidar_intersect:
+            if side == -1:
+                bear = right_bear
+            elif side == 1:
+                bear = left_bear
+            else:
+                bear = centre_bear
+
+            detected_line, img = mower.get_detected_line(
+                target, nogos, bear[m], centre_line, test_shape, current, img,
+                path)
+            # Once no obstacles are found, break to move foward
+            if detected_line is None:
+                break
+
+            centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
+            left_lines = mower.lidar_range()[0][0]
+            right_lines = mower.lidar_range()[0][-1]
+
+            m += 1
+            print(bear[m])
+            # If no turning options left, end. - Handle points impossible to reach
+            if m == len(bear) - 1:
+                print(side)
+                raise Exception("Couldn't get to point")
+
+        mower.move(move_dist, path[target])
+        if target == -1:
+            t = 1
+        else:
+            t = target
+        mower.enqueue(mower.is_outside_buffer(path, current, t))
+        mower.visited = np.vstack((mower.visited, [mower.x, mower.y]))
+        gpd.GeoSeries(mower.lidar_range()[1]).plot()
+        plt.plot(test_shape[:, 0], test_shape[:, 1])
+
+        print_graph(mower, test_shape, nogos, path, current, target, img,
+                    detected_line)
+        img += 1
+        m = 0
+        # If the mower is off course return to pick new point on line
+        if mower.is_off_course():
+            return img
+        # If mower is no longer off course
+        if not mower.is_off_course() and target == -1:
+            return img
+
+    return img
+
+
+def main():
+    warnings.filterwarnings('error')
     ## Load objects and perimeter in Lat, Long format
     nogos = []
     nogo_files = list(glob.glob("obstacle*"))
@@ -478,58 +641,41 @@ def main():
     ]
     m = 0
     img = 0
+
     while target < path_len:
-        while utm_dist([mower.x, mower.y], path[target]) > 0.2:
-            detected_line, img = mower.get_detected_line(
-                target, nogos, 0, centre_line, test_shape, current, img, path)
+        if utm_dist([mower.x, mower.y], path[target]) <= 0.2:
+            current += 1
+            target += 1
+            continue
+        if mower.is_off_course():
+            p = perpen_point([mower.x, mower.y], path[target - 1],
+                             path[target])
+            n = 0
+            while math.isnan(p[0]) or math.isnan(p[1]):
+                p = intersect_point_line(
+                    Vector([mower.x, mower.y]),
+                    Vector([
+                        path[target - 1][0] + (0.00001 * n),
+                        path[target - 1][1] + (0.00001 * n)
+                    ]), Vector(path[target]))
+                n += 1
 
-            # If no detected objects, break to move forward
-            if detected_line is None:
-                break
-            # Currently only considering the left most, centre, and right most
-            # will split into ranges in future testing
-            centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
-            left_lines = mower.lidar_range()[0][0]
-            right_lines = mower.lidar_range()[0][-1]
-            lidar_intersect, side = lidar_intersecting(centre_lines,
-                                                       left_lines, right_lines,
-                                                       mower, detected_line)
-            while lidar_intersect:
-                if side == -1:
-                    bear = right_bear
-                elif side == 1:
-                    bear = left_bear
-                else:
-                    bear = centre_bear
-
-                detected_line, img = mower.get_detected_line(
-                    target, nogos, bear[m], centre_line, test_shape, current,
-                    img, path)
-                # Once no obstacles are found, break to move foward
-                if detected_line is None:
-                    break
-                centre_lines = mower.lidar_range()[0][int(lidar_range / 2)]
-                left_lines = mower.lidar_range()[0][0]
-                right_lines = mower.lidar_range()[0][-1]
-                m += 1
-                print(bear[m])
-                # If no turning options left, end. - Handle points impossible to reach
-                if m == len(bear) - 1:
-                    print(side)
-                    print("Couldn't get to point")
-                    return
-
-            mower.move(move_dist, path[target])
-            mower.visited = np.vstack((mower.visited, [mower.x, mower.y]))
-            gpd.GeoSeries(mower.lidar_range()[1]).plot()
-            plt.plot(test_shape[:, 0], test_shape[:, 1])
-
-            print_graph(mower, test_shape, nogos, path, current, target, img,
-                        detected_line)
-            img += 1
-            m = 0
-        current += 1
-        target += 1
+            if utm_dist([mower.x, mower.y], p) <= 0.2 or utm_dist(
+                [mower.x, mower.y], path[target]) <= 0.2:
+                mower.clear_q()
+                continue
+            dx = p[0] - path[target][0]
+            dy = p[1] - path[target][1]
+            p = np.array([p[0] + (-0.1) * dx, p[1] + (-0.1) * dy])
+            img = avoidance(mower, np.array([path[current], path[target], p]),
+                            -1, nogos, centre_line, test_shape, 0, img,
+                            right_bear, left_bear, centre_bear)
+        else:
+            img = avoidance(mower, path, target, nogos, centre_line,
+                            test_shape, current, img, right_bear, left_bear,
+                            centre_bear)
+            current += 1
+            target += 1
 
     s = gpd.GeoSeries([
         LineString(
@@ -540,10 +686,14 @@ def main():
     plt.axis('off')
     s.buffer(0.15).plot(alpha=0.5, ax=ax)
     plt.plot(test_shape[:, 0], test_shape[:, 1])
-    for nogo in nogos:
-        plt.plot(nogo[:, 0], nogo[:, 1])
-    plt.show()
-    print(mower.visited)
+    # for nogo in nogos:
+    #     plt.plot(nogo[:, 0], nogo[:, 1])
+    # global detected_ends
+    # print(len(detected_ends))
+    # detected_ends = set(detected_ends)
+    # for p in detected_ends:
+    #     plt.scatter(p.x, p.y)
+    plt.savefig("./Imgs/end.png")
 
 
 if __name__ == "__main__":

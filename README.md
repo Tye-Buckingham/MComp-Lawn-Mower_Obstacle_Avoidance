@@ -11,6 +11,7 @@
   * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
   * 17/02/2023: Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
   * 18/02/2023: Tested on coverage map generated without known obstacles.
+  * 08/03/2023: Integrated the route traversal methods from the `Mapping` repo
  
 # TODO 
 
@@ -18,8 +19,13 @@
       * Both close together and far apart (allowing movement between)
   * [x] Stop the robot seeing through walls
   * [ ] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
-  * [ ] Combine with route mapping - if off course and no obstacles, move back to route.
+  * [x] Combine with route mapping - if off course and no obstacles, move back to route.
   * [ ] Move robot to end of detected end point
+  
+# Known Issues
+
+  * When deciding a point to traverse to when off course, some points are not between the origin and destination as intended
+  * Integrating the route traversal has produced some undesirable code and logic issues - **priority**
 
 # Current Pipeline
 
@@ -49,6 +55,13 @@
 	  
   ![Testing_Obstacle_Avoidance_Animated](./Images/Detected_Boundaries.png)
   
+  * Applying the map matching to improve the overall coverage
+  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Integrated_MapMatching.gif)
+  
+  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Integrated_MapMatching_Coverage.png)
+  
 # Tasks
 
   * What level of route overlap do we need? 
@@ -67,6 +80,7 @@
 ![Testing_Obstacle_Avoidance_Animated](./Images/Seperate_Objects_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Smaller_LiDAR_Distance_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_No_Mapping_Unknown_Obstacles_SM.gif)
+![Testing_Obstacle_Avoidance_Animated](./Images/Integrated_MapMatching_SM.gif.gif)
 
 
 # References
