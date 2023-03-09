@@ -14,6 +14,8 @@
   * 08/03/2023: Integrated the route traversal methods from the `Mapping` repo
       * Fixed incorrect back-on-track point
       * Removed section instructing robot to move within the line detection method
+  * 09/03/2023: Fixed doubling back if off course. 
+      * If the robot becomes 'off-course' but an obstacle is between it and the ideal path then it continues as normal until past the obstacle
  
 # TODO 
 
@@ -27,9 +29,6 @@
 # Known Issues
 
   * Integrating the route traversal has produced some undesirable code and logic issues - **priority**
-  * Robot is seen doubly back on itself when off course to find a way round.
-	Will test different movement amounts, number of off course points and off course point offset
-	to determine if these can reduce this issue or whether more realistic movement may make it worse.
 
 # Current Pipeline
 
