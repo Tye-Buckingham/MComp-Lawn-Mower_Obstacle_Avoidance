@@ -62,6 +62,7 @@ class Robot:
         self.target = target
         self.inside = [0] * Q_SIZE
         self.nogo_polys = []
+        self.dist_travelled = 0
 
     # Route traversal functions start
     def enqueue(self, val):
@@ -320,6 +321,9 @@ class Robot:
                     NORTHING: self.y,
                     ELEVATION: 0
                 }, self.heading, -0.15)
+            self.dist_travelled += 0.15
+        else:
+            self.dist_travelled += metres
 
         self.x = pos['e']
         self.y = pos['n']
@@ -722,7 +726,7 @@ def main():
     test_shape = np.loadtxt("./perimeter.out", dtype=float, delimiter=",")
     path = np.loadtxt("./route.out", dtype=float, delimiter=",")
     path_len = len(path)
-    current = 0  # int(path_len / 2)
+    current = 0
     target = current + 1
 
     # Convert Lat, Long to Northing, Easting (UTM)
@@ -804,6 +808,9 @@ def main():
     f, ax = plt.subplots()
     plt.axis('off')
     s.buffer(0.15).plot(alpha=0.5, ax=ax)
+
+    print("Total area: " + str(s.buffer(0.15)[0].area) + " m^2")
+    print("Total distance travelled: " + str(mower.dist_travelled) + " m")
     plt.plot(test_shape[:, 0], test_shape[:, 1])
     # for nogo in nogos:
     #     plt.plot(nogo[:, 0], nogo[:, 1])
