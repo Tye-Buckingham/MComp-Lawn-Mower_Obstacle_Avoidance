@@ -94,8 +94,8 @@
   * Using two overlapping routes to increase overall coverage 
   
   ![Testing_Obstacle_Avoidance_Animated](./Images/Overlapping_Route.png)
-  ![Testing_Obstacle_Avoidance_Animated](./Images/Overlapping_Coverage.png)
   ![Testing_Obstacle_Avoidance_Animated](./Images/Overlapping_Route.gif)
+  ![Testing_Obstacle_Avoidance_Animated](./Images/Overlapping_Coverage.png)
   
 # Tasks
 
