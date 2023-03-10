@@ -1,2 +1,5 @@
 *~
+*#
 flycheck_lidar_sim.py
+.gitignore
+.gitattributes
