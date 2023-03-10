@@ -42,7 +42,7 @@
 
 # Current Pipeline
 
-  * Generate a perfect route with some amount of overlap, in the below case it is 25% the width of the robot
+  * Generate a 'perfect' route with some amount of overlap, in the below case it is 25% the width of the robot
   
   ![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_Route.png)
   
