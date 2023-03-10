@@ -27,6 +27,11 @@
 <li>Fixed incorrect back-on-track point</li>
 <li>Removed section instructing robot to move within the line detection method</li>
 </ul></li>
+<li>09/03/2023: Fixed doubling back if off course.
+<ul>
+<li>If the robot becomes ‘off-course’ but an obstacle is between it and the ideal path then it continues as normal until past the obstacle</li>
+</ul></li>
+<li>10/03/2023: Fixed issues with robot seeing through walls</li>
 </ul>
 <h1 id="todo">TODO</h1>
 <ul>
@@ -41,7 +46,14 @@
 </ul>
 <h1 id="known-issues">Known Issues</h1>
 <ul>
-<li>Integrating the route traversal has produced some undesirable code and logic issues - <strong>priority</strong></li>
+<li>Integrating the route traversal has produced some undesirable code and logic issues</li>
+<li>If an object is flat between the target and the robot it has the chance to go back and forth without making progress</li>
+<li>If the robot gets too close to an obstacle there are some issues with detecting points, this is thought to be because:
+<ul>
+<li>The ‘LiDAR’ comes from a single points but a real sensor would have some width</li>
+<li>A real LiDAR would not need functions to find points and remove points behind walls This may be fixed by changing the movement distance and bearing to keep some distance between the obstacle and the robot.</li>
+<li>Currently a check has been added to determine if an object is too close or if movement results in moving within an object to adjust movement accordingly It is still possible for robot to get stuck or pass through walls, but it is less common</li>
+</ul></li>
 </ul>
 <h1 id="current-pipeline">Current Pipeline</h1>
 <ul>
@@ -99,6 +111,18 @@
 <figure>
 <img src="./Images/Integrated_MapMatching_Coverage.png" alt="Testing_Obstacle_Avoidance_Animated" /><figcaption>Testing_Obstacle_Avoidance_Animated</figcaption>
 </figure>
+<pre><code>  Overall coverage can be limited to RTK accuracy, route, and unknown obstacles. 
+  These inaccuracies can be hard, or in some cases not possible due to the limitations
+  of the hardware in use. To overcome this one method is to provide more than one 
+  route. This provides more work for the robot and is in-efficient however, for 
+  an automated robot the time to finish requirement is not necessarily the primary
+  factor - though battery usage may be. In this project total coverage is the primary
+  focus and as such this is a convinient way to produce desired results.
+  </code></pre>
+<ul>
+<li>Using two overlapping routes to increase overall coverage</li>
+</ul>
+<p><img src="./Images/Overlapping_Route.png" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Overlapping_Coverage.png" alt="Testing_Obstacle_Avoidance_Animated" /> <img src="./Images/Overlapping_Route.gif" alt="Testing_Obstacle_Avoidance_Animated" /></p>
 <h1 id="tasks">Tasks</h1>
 <ul>
 <li>What level of route overlap do we need?</li>
