@@ -39,7 +39,7 @@ from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
 from surveytoolbox.fmt_dms import format_as_dms
 
-lidar_range = 60
+lidar_range = 120
 lidar_dist = 1
 move_dist = 0.5
 lidar_width = 15
@@ -149,7 +149,8 @@ class Robot:
 
     def max_tries(self, path, target):
         dist = utm_dist(path[target - 1], path[target])
-        tries = (int(dist / 0.3) * 1.2)
+        tries = int((dist / 0.3) * 1.1)
+        print("Try " + str(self.tries) + " out of " + str(tries))
         return tries
 
     def is_accessible(self, target):
@@ -228,7 +229,7 @@ class Robot:
                     EASTING: self.x,
                     NORTHING: self.y,
                     ELEVATION: 0
-                }, (self.heading - lidar_width) + (i / 2), lidar_dist)
+                }, (self.heading - lidar_width) + (i / 4), lidar_dist)
 
             inter.append(LineString([(self.x, self.y), (pos['e'], pos['n'])]))
 
@@ -481,6 +482,9 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
     plt.plot(*centre_line.xy)
+    d_ends = set(mower.detected_ends)
+    for p in d_ends:
+        plt.scatter(p.x, p.y, color='red')
     if mower.is_off_course():
         mower_colour = 'red'
     else:
@@ -490,19 +494,19 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     if detected is not None:
         plt.scatter(detected.xy[0], detected.xy[1], color='red')
 
-    plt.scatter(path[current, 0], path[current, 1])
-    plt.scatter(path[target, 0], path[target, 1])
+    plt.scatter(path[current, 0], path[current, 1], color='blue')
+    plt.scatter(path[target, 0], path[target, 1], color='orange')
     plt.axis('off')
     plt.savefig("./Imgs/look_position_" + str(img) + ".png")
     plt.close('all')
 
 
 def shift_float(num):
-    return (num * (9 * 10))
+    return num
 
 
 def shift_int(num):
-    return (num / (9 * 10))
+    return num
 
 
 def utm_dist(p1, p2):
@@ -724,18 +728,6 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
         # If no detected objects, break to move forward
         if detected_line is None:
             mower.move(move_dist, path[target])
-            if mower.tries > mower.max_tries(path, target):
-                print("Trying A*")
-                access, apath = mower.is_accessible(path[target])
-                if not access:
-                    raise NoPath("Couldn't get to point - A* star failed")
-                for a in apath:
-                    mower.move(move_dist, apath[0])
-                    print_graph(mower, test_shape, nogos,
-                                np.array([path[current], apath[0]]), 0, 1, img,
-                                detected_line)
-                    img += 1
-
             # The 'path' is different when off course due to the new determined
             # back-on-track point
             if target == OFF_COURSE_TARGET:
@@ -747,7 +739,6 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
             gpd.GeoSeries(mower.lidar_range()[1]).plot()
             print_graph(mower, test_shape, nogos, path, current, target, img,
                         detected_line)
-            mower.tries = 0
             img += 1
             m = 0
             # Returning to re-calculate temporary target
@@ -795,18 +786,6 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
                 print(side)
                 raise NoTurns("Couldn't get to point - no where to turn")
         mower.move(move_dist, path[target])
-        if mower.tries > mower.max_tries(path, target):
-            print("Trying A*")
-            access, apath = mower.is_accessible(path[target])
-            if not access:
-                raise NoPath("Couldn't get to point - A* star failed")
-            mower.move(move_dist, apath[0])
-            print_graph(mower, test_shape, nogos,
-                        np.array([path[current], apath[0]]), 0, 1, img,
-                        detected_line)
-            mower.tries = 0
-            img += 1
-
         if target == OFF_COURSE_TARGET:
             t = 1
         else:
@@ -820,6 +799,9 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
         m = 0
         # If the mower is off course return to pick new point on line
         if mower.is_off_course():
+            return img
+        # If the mower hasn't reached the point in the estimated time
+        if mower.tries > mower.max_tries(path, target):
             return img
         # If mower is no longer off course
         if not mower.is_off_course() and target == -1:
@@ -869,7 +851,7 @@ def main(to_test, run_num):
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
-        num_polygons = int(random.uniform(1, 3))
+        num_polygons = int(random.uniform(1, 4))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
             width = random.uniform(0, 10)
@@ -916,6 +898,7 @@ def main(to_test, run_num):
         for val in pair
     ]
     img = 0
+    prev_apath = []
     while target < path_len:
         # If reached target within region of inaccuracy
         if utm_dist([mower.x, mower.y], path[target]) <= 0.2:
@@ -923,7 +906,33 @@ def main(to_test, run_num):
             target += 1
             mower.tries = 0
             continue
-        if mower.is_off_course():
+        if mower.tries > mower.max_tries(path, target):
+            print("Trying A*")
+            access, apath = mower.is_accessible(path[target])
+            if not access or apath == [] or apath == prev_apath:
+                current += 1
+                skipped += 1
+                target += 1
+                print("Path not possible, skipping checkpoint")
+            else:
+                print("Path may be possible, trying route")
+                atarget = 1
+                acurrent = 0
+                for a in apath[:-1]:
+                    try:
+                        img = avoidance(mower, np.array(apath), atarget, nogos,
+                                        centre_line, test_shape, acurrent, img,
+                                        right_bear, left_bear, centre_bear)
+                        print("Reached A* target " + str(acurrent) +
+                              " out of " + str(len(apath)))
+                    except (NoTurns, NoPath) as e:
+                        print(e)
+                        print("Couldn't reach A* target, trying next one")
+                    atarget += 1
+                    acurrent += 1
+            mower.tries = 0
+            prev_apath = apath
+        elif mower.is_off_course():
             # Pick a point between robot and desired course
             p = perpen_point([mower.x, mower.y], path[current], path[target])
             if utm_dist([mower.x, mower.y], p) <= 0.2 or utm_dist(
@@ -990,8 +999,8 @@ def main(to_test, run_num):
     print("Total area: " + str(s.buffer(0.15)[0].area) + " m^2")
     print("Total distance travelled: " + str(mower.dist_travelled) + " m")
     plt.plot(test_shape[:, 0], test_shape[:, 1])
-    # for nogo in nogos:
-    #     plt.plot(nogo[:, 0], nogo[:, 1])
+    for nogo in nogos:
+        plt.plot(nogo[:, 0], nogo[:, 1])
     # global detected_ends
     # print(len(detected_ends))
     mower.detected_ends = set(mower.detected_ends)
@@ -1005,10 +1014,13 @@ def main(to_test, run_num):
 
 if __name__ == "__main__":
     runs = 1
-    if len(sys.argv) > 1:
-        to_test = sys.argv[1]
-        runs = sys.argv[2]
+    if '-t' in sys.argv:
+        to_test = True
+        runs = sys.argv[sys.argv.index('-t') + 1]
     else:
-        to_test = None
+        to_test = False
+    if not '-v' in sys.argv:
+        sys.stdout = open(os.devnull, 'w')
+
     for i in range(int(runs)):
         main(to_test, i)
