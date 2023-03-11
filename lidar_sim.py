@@ -148,7 +148,7 @@ class Robot:
     # end
 
     def max_tries(self, path, target):
-        if len(self.visited) > 5:
+        if len(self.visited) > 5 and self.tries > 5:
             dist = utm_dist([self.x, self.y], self.visited[-5])
             if dist <= 1:
                 return 0
@@ -873,7 +873,7 @@ def main(to_test, run_num):
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
-        num_polygons = int(random.uniform(10, 14))
+        num_polygons = int(random.uniform(1, 4))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
             width = random.uniform(0, 10)
