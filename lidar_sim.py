@@ -39,7 +39,7 @@ from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
 from surveytoolbox.fmt_dms import format_as_dms
 
-lidar_range = 60
+lidar_range = 120
 lidar_dist = 1
 move_dist = 0.5
 lidar_width = 15
@@ -148,10 +148,17 @@ class Robot:
     # end
 
     def max_tries(self, path, target):
-        dist = utm_dist(path[target - 1], path[target])
-        tries = int((dist / 0.3) * 1.1)
-        print("Try " + str(self.tries) + " out of " + str(tries))
-        return tries
+        if len(self.visited) > 5:
+            dist = utm_dist([self.x, self.y], self.visited[-5])
+            if dist <= 1:
+                return 0
+        # tries = int((dist / 0.3) * 1.1)
+        # print("Try " + str(self.tries) + " out of " + str(tries))
+        # if dist <= 1:
+        #     tries = 0
+        # else:
+        #     tries = self.tries + 1
+        return self.tries + 1
 
     def is_accessible(self, target):
         b = self.per_poly.bounds  # minx, miny, maxx, maxy
@@ -197,7 +204,18 @@ class Robot:
                 shift_int(p[0] + shift_float(b[0])),
                 shift_int(p[1] + shift_float(b[1]))
             ])
-        return len(apath) > 0, apath
+        print(apath)
+        checked_apath = [[self.x, self.y]]
+        for p in apath:
+            coll = False
+            for d in self.detected_ends:
+                if collinear(p, [self.x, self.y], [d.x, d.y]):
+                    coll = True
+                    break
+            if not coll:
+                checked_apath.append(p)
+
+        return len(checked_apath) > 0, checked_apath
 
     def lidar_range(self):
         """Generate an array of lines at different angles to simulate
@@ -229,7 +247,7 @@ class Robot:
                     EASTING: self.x,
                     NORTHING: self.y,
                     ELEVATION: 0
-                }, (self.heading - lidar_width) + (i / 2), lidar_dist)
+                }, (self.heading - lidar_width) + (i / 4), lidar_dist)
 
             inter.append(LineString([(self.x, self.y), (pos['e'], pos['n'])]))
 
@@ -332,7 +350,8 @@ class Robot:
         if len(points) > 0:
             points = self.remove_hidden(points)
             for p in points:
-                self.detected_ends.append(p)
+                self.detected_ends.append(
+                    p) if p not in self.detected_ends else self.detected_ends
             points = self.find_nearest(points)
 
         return points
@@ -503,11 +522,13 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
 
 
 def shift_float(num):
-    return (num * 10) / 3
+    return num
+    # return (num * 10) / 0.3
 
 
 def shift_int(num):
-    return (num / 10) * 3
+    return num
+    # return (num / 10) * 0.3
 
 
 def utm_dist(p1, p2):
@@ -835,7 +856,7 @@ def main(to_test, run_num):
     mower.lidar_range()
 
     nogos = []
-    if to_test is None:
+    if to_test is False:
         nogo_files = sorted(list(glob.glob("obstacle*")))
         print(nogo_files)
         for i in nogo_files:
@@ -852,7 +873,7 @@ def main(to_test, run_num):
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
-        num_polygons = int(random.uniform(1, 4))
+        num_polygons = int(random.uniform(10, 14))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
             width = random.uniform(0, 10)
