@@ -19,15 +19,20 @@
   * 10/03/2023: Fixed issues with robot seeing through walls
       * Added method to prevent movement that results in moving through walls
       * Changed logic for determining which direction to move when an object is found
+  * 11/03/2023: Added methods to produce randomly generated nogos within scene, output the shapes, and output coverage, total distance, and number of points skipped
+      * Now the robot has N number of tries (relating to distance from origin) to reach a point, if this fails then A* is used along with the robot's
+	  knowledge of the scene from detecting points to determine if the point is accessible or not. **Needs more testing**
+          * If the point is determined inaccessible then the robot will skip this checkpoint.
  
 # TODO 
 
   * [x] Handle multiple objects
       * Both close together and far apart (allowing movement between)
   * [x] Stop the robot seeing through walls
-  * [ ] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
+  * [x] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
   * [x] Combine with route mapping - if off course and no obstacles, move back to route.
   * [ ] Move robot to end of detected end point
+  * [x] Test scenes with randomly generated nogos
   
 # Known Issues
 
@@ -39,6 +44,7 @@
 	  This may be fixed by changing the movement distance and bearing to keep some distance between the obstacle and the robot.
       * Currently a check has been added to determine if an object is too close or if movement results in moving within an object to adjust movement accordingly
 	  It is still possible for robot to get stuck or pass through walls, but it is less common
+  * Addition of random nogo testing and inaccessible points needs more testing
 
 # Current Pipeline
 
