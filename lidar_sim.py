@@ -39,7 +39,7 @@ from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
 from surveytoolbox.fmt_dms import format_as_dms
 
-lidar_range = 120
+lidar_range = 60
 lidar_dist = 1
 move_dist = 0.5
 lidar_width = 15
@@ -229,7 +229,7 @@ class Robot:
                     EASTING: self.x,
                     NORTHING: self.y,
                     ELEVATION: 0
-                }, (self.heading - lidar_width) + (i / 4), lidar_dist)
+                }, (self.heading - lidar_width) + (i / 2), lidar_dist)
 
             inter.append(LineString([(self.x, self.y), (pos['e'], pos['n'])]))
 
@@ -314,7 +314,6 @@ class Robot:
                                    (nogo[i + 1][0], nogo[i + 1][1])])
                 for line in lidar_lines:
                     if line.intersects(edge):
-                        self.detected_ends.append(line.intersection(edge))
                         # If the target is infront of the end don't consider it
                         if utm_dist([self.x, self.y], [
                                 line.intersection(edge).x,
@@ -332,6 +331,8 @@ class Robot:
         # Once all relevant points are found, determine which to handle first
         if len(points) > 0:
             points = self.remove_hidden(points)
+            for p in points:
+                self.detected_ends.append(p)
             points = self.find_nearest(points)
 
         return points
@@ -502,11 +503,11 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
 
 
 def shift_float(num):
-    return num
+    return (num * 10) / 3
 
 
 def shift_int(num):
-    return num
+    return (num / 10) * 3
 
 
 def utm_dist(p1, p2):
