@@ -730,11 +730,11 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
                 if not access:
                     raise NoPath("Couldn't get to point - A* star failed")
                 for a in apath:
-                    img = avoidance(mower,
-                                    np.array([path[current], path[target],
-                                              a]), OFF_COURSE_TARGET, nogos,
-                                    centre_line, test_shape, 0, img,
-                                    right_bear, left_bear, centre_bear)
+                    mower.move(move_dist, apath[0])
+                    print_graph(mower, test_shape, nogos,
+                                np.array([path[current], apath[0]]), 0, 1, img,
+                                detected_line)
+                    img += 1
 
             # The 'path' is different when off course due to the new determined
             # back-on-track point
@@ -747,6 +747,7 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
             gpd.GeoSeries(mower.lidar_range()[1]).plot()
             print_graph(mower, test_shape, nogos, path, current, target, img,
                         detected_line)
+            mower.tries = 0
             img += 1
             m = 0
             # Returning to re-calculate temporary target
@@ -799,12 +800,13 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
             access, apath = mower.is_accessible(path[target])
             if not access:
                 raise NoPath("Couldn't get to point - A* star failed")
-            for a in apath:
-                img = avoidance(mower,
-                                np.array([path[current], path[target],
-                                          a]), OFF_COURSE_TARGET, nogos,
-                                centre_line, test_shape, 0, img, right_bear,
-                                left_bear, centre_bear)
+            mower.move(move_dist, apath[0])
+            print_graph(mower, test_shape, nogos,
+                        np.array([path[current], apath[0]]), 0, 1, img,
+                        detected_line)
+            mower.tries = 0
+            img += 1
+
         if target == OFF_COURSE_TARGET:
             t = 1
         else:
