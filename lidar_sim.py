@@ -39,7 +39,7 @@ from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
 from surveytoolbox.fmt_dms import format_as_dms
 
-lidar_range = 120
+lidar_range = 60
 lidar_dist = 1
 move_dist = 0.5
 lidar_width = 15
@@ -80,7 +80,7 @@ class Robot:
         self.nogo_polys = []
         self.per_poly = None
         self.dist_travelled = 0
-        self.detected_ends = []
+        self.detected_ends = set()
         self.tries = 0
 
     # Route traversal functions start
@@ -204,17 +204,39 @@ class Robot:
                 shift_int(p[0] + shift_float(b[0])),
                 shift_int(p[1] + shift_float(b[1]))
             ])
-        print(apath)
         checked_apath = [[self.x, self.y]]
+        # Check if the route violates the detected boundaries
+        lines = []
+        d = 0
+        while d < len(self.detected_ends) - 1:
+            line = []
+            while utm_dist(
+                [list(self.detected_ends)[d].x,
+                 list(self.detected_ends)[d].y], [
+                     list(self.detected_ends)[d + 1].x,
+                     list(self.detected_ends)[d + 1].y
+                 ]) < 0.5 and d < len(list(self.detected_ends)) - 2:
+                line.append(list(self.detected_ends)[d])
+                d += 1
+            if len(line) >= 2:
+                lines.append(LineString(line))
+            d += 1
         for p in apath:
             coll = False
-            for d in self.detected_ends:
-                if collinear(p, [self.x, self.y], [d.x, d.y]):
-                    coll = True
-                    break
+            for pp in apath:
+                if pp == p:
+                    continue
+                # If two points in apath cross a detected point
+                line2 = LineString([p, pp])
+                for line in lines:
+                    if line.intersects(line2):
+                        coll = True
+                        break
             if not coll:
                 checked_apath.append(p)
-
+            else:
+                break
+        print(checked_apath)
         return len(checked_apath) > 0, checked_apath
 
     def lidar_range(self):
@@ -247,7 +269,7 @@ class Robot:
                     EASTING: self.x,
                     NORTHING: self.y,
                     ELEVATION: 0
-                }, (self.heading - lidar_width) + (i / 4), lidar_dist)
+                }, (self.heading - lidar_width) + (i / 2), lidar_dist)
 
             inter.append(LineString([(self.x, self.y), (pos['e'], pos['n'])]))
 
@@ -311,15 +333,15 @@ class Robot:
 
     def detect_objects(self, nogos, target):
         """Find all objects within range of the robot's LiDAR.
-
+        
         This method does require the objects to be 'known' but will
         only return those visible to the robot.
-
+        
         Args:
             nogos: The list of nogos in the scene.
             target: The robot's current coordinate target, typically
                 the next in the given route.
-
+        
         Returns:
             All objects within range of the robot.
         """
@@ -350,15 +372,15 @@ class Robot:
         if len(points) > 0:
             points = self.remove_hidden(points)
             for p in points:
-                self.detected_ends.append(
-                    p) if p not in self.detected_ends else self.detected_ends
+                self.detected_ends.add(p)
+
             points = self.find_nearest(points)
 
         return points
 
     def closer_point(self, p1, p2):
         """Finds the closer of two points on a UTM grid
-
+        
         Returns:
             The closest point.
         """
@@ -502,9 +524,26 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
     plt.plot(*centre_line.xy)
-    d_ends = set(mower.detected_ends)
-    for p in d_ends:
-        plt.scatter(p.x, p.y, color='red')
+    lines = []
+    d = 0
+    while d < len(mower.detected_ends) - 1:
+        line = []
+        while utm_dist(
+            [list(mower.detected_ends)[d].x,
+             list(mower.detected_ends)[d].y], [
+                 list(mower.detected_ends)[d + 1].x,
+                 list(mower.detected_ends)[d + 1].y
+             ]) < 0.5 and d < len(list(mower.detected_ends)) - 2:
+            line.append(list(mower.detected_ends)[d])
+            d += 1
+        if len(line) >= 2:
+            lines.append(LineString(line))
+        d += 1
+
+    # d_ends = set(mower.detected_ends)
+    for p in lines:
+        for c in p.exterior.coords:
+            plt.scatter(c[0], c[1], color='red')
     if mower.is_off_course():
         mower_colour = 'red'
     else:
@@ -873,11 +912,11 @@ def main(to_test, run_num):
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
-        num_polygons = int(random.uniform(1, 4))
+        num_polygons = int(random.uniform(10, 10))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
-            width = random.uniform(0, 10)
-            height = random.uniform(0, 10)
+            width = random.uniform(1, 10)
+            height = random.uniform(1, 10)
             rand_x = random.uniform(min_x, max_x)
             rand_y = random.uniform(min_y, max_y)
 
