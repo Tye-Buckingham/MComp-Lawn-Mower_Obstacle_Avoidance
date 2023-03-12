@@ -80,7 +80,7 @@ class Robot:
         self.nogo_polys = []
         self.per_poly = None
         self.dist_travelled = 0
-        self.detected_ends = set()
+        self.detected_ends = []
         self.tries = 0
 
     # Route traversal functions start
@@ -161,6 +161,7 @@ class Robot:
         return self.tries + 1
 
     def is_accessible(self, target):
+        print("Is Accessible")
         b = self.per_poly.bounds  # minx, miny, maxx, maxy
         d = list(set(self.detected_ends))
         m_x = int(shift_float(b[2]) - shift_float(b[0])) + 1
@@ -207,20 +208,21 @@ class Robot:
         checked_apath = [[self.x, self.y]]
         # Check if the route violates the detected boundaries
         lines = []
-        d = 0
-        while d < len(self.detected_ends) - 1:
+        len_d = 0
+        while len_d < len(d) - 1:
             line = []
-            while utm_dist(
-                [list(self.detected_ends)[d].x,
-                 list(self.detected_ends)[d].y], [
-                     list(self.detected_ends)[d + 1].x,
-                     list(self.detected_ends)[d + 1].y
-                 ]) < 0.5 and d < len(list(self.detected_ends)) - 2:
-                line.append(list(self.detected_ends)[d])
-                d += 1
+            while utm_dist([
+                    list(self.detected_ends)[len_d].x,
+                    list(self.detected_ends)[len_d].y
+            ], [
+                    list(self.detected_ends)[len_d + 1].x,
+                    list(self.detected_ends)[len_d + 1].y
+            ]) < 0.5 and d < len(list(self.detected_ends)) - 2:
+                line.append(list(self.detected_ends)[len_d])
+                len_d += 1
             if len(line) >= 2:
                 lines.append(LineString(line))
-            d += 1
+            len_d += 1
         for p in apath:
             coll = False
             for pp in apath:
@@ -289,6 +291,7 @@ class Robot:
         Return:
             The nearest object, or merged objects.
         """
+        print("Finding nearest")
         nearest = points
         for i in range(1, len(points)):
             # If robot cannot fit in the gap consider it one solid object
@@ -314,6 +317,7 @@ class Robot:
             points: All points detected by the robot that are in range
                 and being considered at this time.
         """
+        print("Removing hidden")
         new_points = []
         for i in range(len(points)):
             behind = False
@@ -345,6 +349,7 @@ class Robot:
         Returns:
             All objects within range of the robot.
         """
+        print("Detecting objects")
         points = []
         lidar_lines = self.lidar_range()[0]
         for nogo in nogos[0]:  # For each object
@@ -372,8 +377,7 @@ class Robot:
         if len(points) > 0:
             points = self.remove_hidden(points)
             for p in points:
-                self.detected_ends.add(p)
-
+                self.detected_ends.append(p)
             points = self.find_nearest(points)
 
         return points
@@ -489,6 +493,7 @@ class Robot:
         Returns:
             The detected points as a shape, line, or single point.
         """
+        print("Detecting line")
         self.find_target(path[target])
         n = nogos.copy()
         n.append(test_shape)
@@ -511,6 +516,7 @@ class Robot:
 def print_graph(mower, test_shape, nogos, path, current, target, img,
                 detected):
 
+    print("Printing Graph")
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
 
     plt.plot(path[:, 0],
@@ -524,26 +530,8 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
     plt.plot(*centre_line.xy)
-    lines = []
-    d = 0
-    while d < len(mower.detected_ends) - 1:
-        line = []
-        while utm_dist(
-            [list(mower.detected_ends)[d].x,
-             list(mower.detected_ends)[d].y], [
-                 list(mower.detected_ends)[d + 1].x,
-                 list(mower.detected_ends)[d + 1].y
-             ]) < 0.5 and d < len(list(mower.detected_ends)) - 2:
-            line.append(list(mower.detected_ends)[d])
-            d += 1
-        if len(line) >= 2:
-            lines.append(LineString(line))
-        d += 1
-
-    # d_ends = set(mower.detected_ends)
-    for p in lines:
-        for c in p.exterior.coords:
-            plt.scatter(c[0], c[1], color='red')
+    for p in mower.detected_ends:
+        plt.scatter(p.x, p.y, color='red')
     if mower.is_off_course():
         mower_colour = 'red'
     else:
@@ -561,13 +549,13 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
 
 
 def shift_float(num):
-    return num
-    # return (num * 10) / 0.3
+    # return num
+    return (num * 10) / 0.3
 
 
 def shift_int(num):
-    return num
-    # return (num / 10) * 0.3
+    # return num
+    return (num / 10) * 0.3
 
 
 def utm_dist(p1, p2):
@@ -700,6 +688,7 @@ def lidar_intersecting(centre, left, right, mower, detected_line):
     Returns:
         If a line has been detected and in which direction.
     """
+    print("LiDAR Intersecting")
     l_dist, l = get_closest_intersect(mower, detected_line, left)
     r_dist, r = get_closest_intersect(mower, detected_line, right)
     c_dist, c = get_closest_intersect(mower, detected_line, centre)
@@ -779,7 +768,7 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
         centre_bear: The list of bearings to try when iteratively
             turning left and right.
     """
-
+    print("Avoidance...")
     while utm_dist([mower.x, mower.y], path[target]) > 0.2:
         m = 0
         detected_line, img = mower.get_detected_line(target, nogos, 0,
@@ -912,7 +901,7 @@ def main(to_test, run_num):
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
-        num_polygons = int(random.uniform(10, 10))
+        num_polygons = int(random.uniform(1, 4))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
             width = random.uniform(1, 10)
@@ -1064,7 +1053,6 @@ def main(to_test, run_num):
         plt.plot(nogo[:, 0], nogo[:, 1])
     # global detected_ends
     # print(len(detected_ends))
-    mower.detected_ends = set(mower.detected_ends)
     for p in mower.detected_ends:
         plt.scatter(p.x, p.y)
     if to_test is None:
