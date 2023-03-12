@@ -146,7 +146,6 @@
   * What else, other than RTK inaccuracy, will affect our route?
   * What is an acceptable time to compute, total route distance, and time to complete route.
   * Testing different off course offset values.
-  * Test functions to generate random arenas to produce coverage routes, traverse, and report if successfuly traversed.
 
 # Progress
 
