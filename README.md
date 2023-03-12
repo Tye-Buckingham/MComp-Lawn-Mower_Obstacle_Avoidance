@@ -18,15 +18,24 @@
  
  To generate a path for the robot to follow within the given perimeter one can use my `mapping` repo. 
  
-	This repo is intended to be used to learn about methods, and test said methods to determine efficiency and find issues before implementing on the 
+	This repo is intended to be used to learn about methods, 
+	and test said methods to determine efficiency 
+	and find issues before implementing on the 
 	robot designed for this MCOMP project.
  
 # Changelog 
 
-	Some updates do not come with a changelog update or descriptive commit, this is due to the repo being a place to test, develop, and keep 
-	backups of this work. Only major changes which are considered to be long term or substantial will be described in this section.
-	This repo is primarily for learning, testing, and theoretical development, it is not necessarily intended to be used in actual projects, 
-	but it is hoped that this repo can at least help those understand and visualise methods required for path traversal and obstacle detection.
+	Some updates do not come with a changelog update or 
+	descriptive commit, this is due to the repo being a 
+	place to test, develop, and keep backups of this work. 
+	Only major changes which are considered to be long 
+	term or substantial will be described in this section.
+	This repo is primarily for learning, testing, and 
+	theoretical development, it is not necessarily 
+	intended to be used in actual projects, 
+	but it is hoped that this repo can at least help 
+	those understand and visualise methods required for 
+	path traversal and obstacle detection.
 	
 	
   * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
