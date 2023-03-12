@@ -15,6 +15,7 @@ import glob
 import math
 import os
 import random
+import signal
 import sys
 import warnings
 from itertools import chain
@@ -31,6 +32,12 @@ from matplotlib.colors import ListedColormap
 from pathfinding.core.diagonal_movement import DiagonalMovement
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
+from pathfinding.finder.best_first import BestFirst
+from pathfinding.finder.bi_a_star import BiAStarFinder
+from pathfinding.finder.breadth_first import BreadthFirstFinder
+from pathfinding.finder.dijkstra import DijkstraFinder
+from pathfinding.finder.msp import MinimumSpanningTree
+from shapely.affinity import scale
 from shapely.geometry import LineString, Point, Polygon
 
 import coverage
@@ -49,11 +56,12 @@ ON_COURSE = 0
 OFF_COURSE = 1
 Q_SIZE = 10
 MAX_SPEED = 0.6
-
+PRINT = False
 OFF_COURSE_TARGET = -1
 OBJECT_TO_LEFT = -1
 OBJECT_TO_RIGHT = 1
 OBJECT_TO_CENTRE = 0
+SIGINT = 0
 
 
 class NoTurns(Exception):
@@ -160,6 +168,24 @@ class Robot:
         #     tries = self.tries + 1
         return self.tries + 1
 
+    def print_finder_graph(self, target, b, matrix):
+        go = [
+            int(shift_float(self.x) - shift_float(b[0])),
+            int(shift_float(self.y) - shift_float(b[1]))
+        ]
+        to = [
+            int(shift_float(target[0]) - shift_float(b[0])),
+            int(shift_float(target[1]) - shift_float(b[1]))
+        ]
+        matrix[int(shift_float(self.x) - shift_float(b[0]))][int(
+            shift_float(self.y) - shift_float(b[1]))] = 0
+        matrix[int(shift_float(target[0]) - shift_float(b[0]))][int(
+            shift_float(target[1]) - shift_float(b[1]))] = 0
+        plt.text(to[0], to[1], 'target', ha='center', va='center')
+        plt.text(go[0], go[1], 'current', ha='center', va='center')
+        plt.imshow(matrix, interpolation=None, cmap='viridis')
+        plt.show()
+
     def is_accessible(self, target):
         print("Is Accessible")
         b = self.per_poly.bounds  # minx, miny, maxx, maxy
@@ -169,44 +195,7 @@ class Robot:
         matrix = [[1] * max(m_x, m_y)] * max(m_y, m_x)
         matrix = np.array(matrix)
         print(len(d))
-        for point in d:
-            x = int(shift_float(point.x) - shift_float(b[0]))
-            y = int(shift_float(point.y) - shift_float(b[1]))
-            matrix[x][y] = 0
-        np.savetxt('./Tests/grid.out', np.array(matrix), delimiter=',')
-        grid = Grid(matrix=matrix)
-        # go = [
-        #     int(shift_float(self.x) - shift_float(b[0])),
-        #     int(shift_float(self.y) - shift_float(b[1]))
-        # ]
-        # to = [
-        #     int(shift_float(target[0]) - shift_float(b[0])),
-        #     int(shift_float(target[1]) - shift_float(b[1]))
-        # ]
-        # matrix[int(shift_float(self.x) - shift_float(b[0]))][int(
-        #     shift_float(self.y) - shift_float(b[1]))] = 0
-        # matrix[int(shift_float(target[0]) - shift_float(b[0]))][int(
-        #     shift_float(target[1]) - shift_float(b[1]))] = 0
-        # plt.text(to[0], to[1], 'target', ha='center', va='center')
-        # plt.text(go[0], go[1], 'current', ha='center', va='center')
-        # plt.imshow(matrix, interpolation=None, cmap='viridis')
-        # plt.gca().invert_yaxis()
-        # plt.show()
-        start = grid.node(int(shift_float(self.x) - shift_float(b[0])),
-                          int(shift_float(self.y) - shift_float(b[1])))
-        end = grid.node(int(shift_float(target[0]) - shift_float(b[0])),
-                        int(shift_float(target[1]) - shift_float(b[1])))
 
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
-        path, runs = finder.find_path(start, end, grid)
-        apath = []
-        for p in path:
-            apath.append([
-                shift_int(p[0] + shift_float(b[0])),
-                shift_int(p[1] + shift_float(b[1]))
-            ])
-        checked_apath = [[self.x, self.y]]
-        # Check if the route violates the detected boundaries
         lines = []
         len_d = 0
         while len_d < len(d) - 1:
@@ -217,14 +206,49 @@ class Robot:
             ], [
                     list(self.detected_ends)[len_d + 1].x,
                     list(self.detected_ends)[len_d + 1].y
-            ]) < 0.5 and d < len(list(self.detected_ends)) - 2:
+            ]) < 0.5 and len_d < len(list(self.detected_ends)) - 2:
                 line.append(list(self.detected_ends)[len_d])
                 len_d += 1
             if len(line) >= 2:
                 lines.append(LineString(line))
             len_d += 1
+        for line in lines:
+            for point in line.coords:
+                x = int(shift_float(point[0]) - shift_float(b[0]))
+                y = int(shift_float(point[1]) - shift_float(b[1]))
+                for i in [-1, 0, 1]:
+                    for j in [-1, 0, 1]:
+                        matrix[x + i][y + j] = 0
+        np.savetxt('./Tests/grid.out', np.array(matrix), delimiter=',')
+
+        self.print_finder_graph(target, b, matrix)
+
+        grid = Grid(matrix=matrix)
+        start = grid.node(int(shift_float(self.x) - shift_float(b[0])),
+                          int(shift_float(self.y) - shift_float(b[1])))
+        end = grid.node(int(shift_float(target[0]) - shift_float(b[0])),
+                        int(shift_float(target[1]) - shift_float(b[1])))
+
+        # AStarFinder, BestFirst, BiAStarFinder, DijkstraFinder,
+        # IDAStarFinder, BreadthFirstFinder, MinimumSpanningTree
+        finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+        path, runs = finder.find_path(start, end, grid)
+
+        apath = []
+        for p in path:
+            apath.append([
+                shift_int(p[0] + shift_float(b[0])),
+                shift_int(p[1] + shift_float(b[1]))
+            ])
+        checked_apath = [[self.x, self.y]]
+        # Check if the route violates the detected boundaries
         for p in apath:
             coll = False
+            # line3 = LineString([[self.x, self.y], p])
+            # for line in lines:
+            #     if line.intersects(line3):
+            #         coll = True
+            #         break
             for pp in apath:
                 if pp == p:
                     continue
@@ -239,7 +263,9 @@ class Robot:
             else:
                 break
         print(checked_apath)
-        return len(checked_apath) > 0, checked_apath
+        # if len(checked_path) > 3:
+        #     del checked_path[3 - 1::3]
+        return (len(checked_apath) - 1) > 0, checked_apath
 
     def lidar_range(self):
         """Generate an array of lines at different angles to simulate
@@ -390,7 +416,7 @@ class Robot:
         """
         if utm_dist([self.x, self.y], [p1.x, p1.y]) < utm_dist(
             [self.x, self.y], [p2.x, p2.y]):
-            return p1
+            return p1x
         return p2
 
     def move(self, metres, target):
@@ -515,8 +541,11 @@ class Robot:
 
 def print_graph(mower, test_shape, nogos, path, current, target, img,
                 detected):
+    if not PRINT:
+        return 0
 
     print("Printing Graph")
+    gpd.GeoSeries(mower.lidar_range()[1]).plot()
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
 
     plt.plot(path[:, 0],
@@ -530,6 +559,8 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
     plt.plot(*centre_line.xy)
+    # for p in random.sample(mower.detected_ends,
+    #                        min(50, len(mower.detected_ends))):
     for p in mower.detected_ends:
         plt.scatter(p.x, p.y, color='red')
     if mower.is_off_course():
@@ -550,12 +581,12 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
 
 def shift_float(num):
     # return num
-    return (num * 10) / 0.3
+    return (num * (10))
 
 
 def shift_int(num):
-    # return num
-    return (num / 10) * 0.3
+    # return num  # m
+    return (num / (10))  # cm
 
 
 def utm_dist(p1, p2):
@@ -786,7 +817,6 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
                 t = target
             mower.enqueue(mower.is_outside_buffer(path, current, t))
             mower.visited = np.vstack((mower.visited, [mower.x, mower.y]))
-            gpd.GeoSeries(mower.lidar_range()[1]).plot()
             print_graph(mower, test_shape, nogos, path, current, target, img,
                         detected_line)
             img += 1
@@ -842,7 +872,6 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
             t = target
         mower.enqueue(mower.is_outside_buffer(path, current, t))
         mower.visited = np.vstack((mower.visited, [mower.x, mower.y]))
-        gpd.GeoSeries(mower.lidar_range()[1]).plot()
         print_graph(mower, test_shape, nogos, path, current, target, img,
                     detected_line)
         img += 1
@@ -860,7 +889,15 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
     return img
 
 
+def signal_handler(sig, frame):
+    global SIGINT
+    print("Cancelling run on next main iteration...")
+    SIGINT = 1
+
+
 def main(to_test, run_num):
+    global SIGINT
+    signal.signal(signal.SIGINT, signal_handler)
     # NOTE: Please ensure the perimeter is name obstacle_0.out
     # will all other nogo-zones in ascending order e.g. obstacle_1.out, ...
 
@@ -904,8 +941,8 @@ def main(to_test, run_num):
         num_polygons = int(random.uniform(1, 4))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
-            width = random.uniform(1, 10)
-            height = random.uniform(1, 10)
+            width = random.uniform(1, 5)
+            height = random.uniform(1, 5)
             rand_x = random.uniform(min_x, max_x)
             rand_y = random.uniform(min_y, max_y)
 
@@ -944,12 +981,12 @@ def main(to_test, run_num):
     left_bear = list(range(-4, -180, -4))
     # If the robot detects an object in front, try left and right
     centre_bear = [
-        val for pair in zip(list(range(8, 180, 8)), list(range(-8, -180, -8)))
+        val for pair in zip(list(range(8, 180, 6)), list(range(-8, -180, -8)))
         for val in pair
     ]
     img = 0
     prev_apath = []
-    while target < path_len:
+    while target < path_len and SIGINT == 0:
         # If reached target within region of inaccuracy
         if utm_dist([mower.x, mower.y], path[target]) <= 0.2:
             current += 1
@@ -959,13 +996,17 @@ def main(to_test, run_num):
         if mower.tries > mower.max_tries(path, target):
             print("Trying A*")
             access, apath = mower.is_accessible(path[target])
-            if not access or apath == [] or apath == prev_apath:
+            if not access or apath == [[mower.x, mower.y]
+                                       ] or apath == prev_apath:
                 current += 1
                 skipped += 1
                 target += 1
                 print("Path not possible, skipping checkpoint")
             else:
                 print("Path may be possible, trying route")
+                print_graph(mower, test_shape, nogos, np.array(apath), 0, 1,
+                            img, None)
+                img += 1
                 atarget = 1
                 acurrent = 0
                 for a in apath[:-1]:
@@ -977,7 +1018,8 @@ def main(to_test, run_num):
                               " out of " + str(len(apath)))
                     except (NoTurns, NoPath) as e:
                         print(e)
-                        print("Couldn't reach A* target, trying next one")
+                        print("Couldn't reach A* target" + str(atarget))
+                        break
                     atarget += 1
                     acurrent += 1
             mower.tries = 0
@@ -1070,6 +1112,7 @@ if __name__ == "__main__":
         to_test = False
     if not '-v' in sys.argv:
         sys.stdout = open(os.devnull, 'w')
-
+    if '-p' in sys.argv:
+        PRINT = True
     for i in range(int(runs)):
         main(to_test, i)
