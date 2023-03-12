@@ -76,6 +76,8 @@
       * Currently a check has been added to determine if an object is too close or if movement results in moving within an object to adjust movement accordingly
 	  It is still possible for robot to get stuck or pass through walls, but it is less common
   * Addition of random nogo testing and inaccessible points needs more testing
+  * Though A* for finding a new route and exploration of non-optimal routes is implemented, there are some issues and does not appear
+	optimal, 
 
 # Current Pipeline
 
