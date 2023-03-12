@@ -14,7 +14,7 @@
  **Note**: Images can cause a long wait time due to the number of detected points being plotted.
  
  If the user does not wish to use GPS points for the perimeter or nogo zones then generic x, y points should be fine but the conversion to UTM needs
- to be skipped.
+ to be omitted.
  
  To generate a path for the robot to follow within the given perimeter one can use my `mapping` repo. 
  
@@ -77,7 +77,8 @@
 	  It is still possible for robot to get stuck or pass through walls, but it is less common
   * Addition of random nogo testing and inaccessible points needs more testing
   * Though A* for finding a new route and exploration of non-optimal routes is implemented, there are some issues and does not appear
-	optimal. 
+	optimal.
+  * Max tries methods have different logic and so the name and return need to be changed.
 
 # Current Pipeline
 
