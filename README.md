@@ -77,7 +77,7 @@
 	  It is still possible for robot to get stuck or pass through walls, but it is less common
   * Addition of random nogo testing and inaccessible points needs more testing
   * Though A* for finding a new route and exploration of non-optimal routes is implemented, there are some issues and does not appear
-	optimal, 
+	optimal. 
 
 # Current Pipeline
 
@@ -85,7 +85,7 @@
   
   ![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_Route.png)
   
-  * Reduce the number of points by remove those along the same line
+  * Reduce the number of points by removing those along the same line
       * This reduces the memory requirements but also reduces the chances a point is within an unknown object
 	  
   ![Testing_Obstacle_Avoidance_Animated](./Images/Direction_Change_Route.png)
