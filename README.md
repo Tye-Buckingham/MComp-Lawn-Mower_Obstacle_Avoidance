@@ -3,11 +3,32 @@
  Obstacle avoidance using LiDAR testing and simulation. 
  Development and testing of methods for eventual use in the automatic lawn mower. 
  To use input a perimeter, a list of nogo zones, a start point, and an end point. These points should be in GPS format as they will then be converted to UTM.
+ The nogo zones and perimeter can typed literally, but the current method (and would be easier) to use a .out file created using np.savetxt.
  
  UTM has been chosen as the distance the lawn mower will travel is small enough such that the curvature of the Earth is thought to have negligible affect on accuracy. UTM also provides an easy way to traverse the space in metres, using the compass on the robot.
  
+ A perimeter is needed but to test random nogos within the perimeter use the `-t` arg, followed by the number of runs. This will output the final image,
+ total distance, coverage, and the number of skipped checkpoints when finished. To output printing messages the user can pass `-v`, and to output images 
+ for each movement (to create GIFs similar to those shown in this README) the user can use `-p`.
+ 
+ **Note**: Images can cause a long wait time due to the number of detected points being plotted.
+ 
+ If the user does not wish to use GPS points for the perimeter or nogo zones then generic x, y points should be fine but the conversion to UTM needs
+ to be skipped.
+ 
+ To generate a path for the robot to follow within the given perimeter one can use my `mapping` repo. 
+ 
+	This repo is intended to be used to learn about methods, and test said methods to determine efficiency and find issues before implementing on the 
+	robot designed for this MCOMP project.
+ 
 # Changelog 
 
+	Some updates do not come with a changelog update or descriptive commit, this is due to the repo being a place to test, develop, and keep 
+	backups of this work. Only major changes which are considered to be long term or substantial will be described in this section.
+	This repo is primarily for learning, testing, and theoretical development, it is not necessarily intended to be used in actual projects, 
+	but it is hoped that this repo can at least help those understand and visualise methods required for path traversal and obstacle detection.
+	
+	
   * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
       * Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
   * 18/02/2023: Tested on coverage map generated without known obstacles.
@@ -23,6 +44,7 @@
       * Now the robot has N number of tries (relating to distance from origin) to reach a point, if this fails then A* is used along with the robot's
 	  knowledge of the scene from detecting points to determine if the point is accessible or not. **Needs more testing**
           * If the point is determined inaccessible then the robot will skip this checkpoint.
+  * 12/03/2023: Instead of N amount of tries, A* is used when the robot makes minimal progress within N amount of moves.
  
 # TODO 
 
