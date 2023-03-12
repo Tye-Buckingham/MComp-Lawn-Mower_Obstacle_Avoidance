@@ -146,6 +146,8 @@
   * What else, other than RTK inaccuracy, will affect our route?
   * What is an acceptable time to compute, total route distance, and time to complete route.
   * Testing different off course offset values.
+  * A* is used to find a new path dependant on the known boundaries, when to ignore this route and skip to 
+	the next checkpoint - deciding between coverage and time to find next point.
 
 # Progress
 
