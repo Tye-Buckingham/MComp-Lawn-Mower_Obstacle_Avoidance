@@ -54,6 +54,7 @@
 	  knowledge of the scene from detecting points to determine if the point is accessible or not. **Needs more testing**
           * If the point is determined inaccessible then the robot will skip this checkpoint.
   * 12/03/2023: Instead of N amount of tries, A* is used when the robot makes minimal progress within N amount of moves.
+
  
 # TODO 
 
@@ -64,10 +65,10 @@
   * [x] Combine with route mapping - if off course and no obstacles, move back to route.
   * [ ] Move robot to end of detected end point
   * [x] Test scenes with randomly generated nogos
+  * [ ] Reduce number of detected points to minimal set
   
 # Known Issues
 
-  * Integrating the route traversal has produced some undesirable code and logic issues 
   * If an object is flat between the target and the robot it has the chance to go back and forth without making progress
   * If the robot gets too close to an obstacle there are some issues with detecting points, this is thought to be because:
       * The 'LiDAR' comes from a single points but a real sensor would have some width
@@ -75,9 +76,9 @@
 	  This may be fixed by changing the movement distance and bearing to keep some distance between the obstacle and the robot.
       * Currently a check has been added to determine if an object is too close or if movement results in moving within an object to adjust movement accordingly
 	  It is still possible for robot to get stuck or pass through walls, but it is less common
-  * Addition of random nogo testing and inaccessible points needs more testing
-  * A* path finding does not reliably finding a path
+  * A* path finding does not reliably finding a path - most often when the path would lead the robot away
   * Max tries methods have different logic and so the name and return need to be changed.
+  * Printing detected points as lines appears to 'forget' earlier points
 
 # Current Pipeline
 

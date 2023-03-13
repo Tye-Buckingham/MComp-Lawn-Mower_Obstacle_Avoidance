@@ -10,21 +10,23 @@
 # is not solid then the RTK methods would prevent the
 # robot going off course.
 
+import cProfile
 import csv
 import glob
+import itertools
 import math
 import os
+import pstats
 import random
 import signal
 import sys
+import time
 import warnings
-from itertools import chain
+from inspect import getmembers, isfunction
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import utm
 from mathutils import Vector
 from mathutils.geometry import intersect_point_line
@@ -37,21 +39,18 @@ from pathfinding.finder.bi_a_star import BiAStarFinder
 from pathfinding.finder.breadth_first import BreadthFirstFinder
 from pathfinding.finder.dijkstra import DijkstraFinder
 from pathfinding.finder.msp import MinimumSpanningTree
-from shapely.affinity import scale
 from shapely.geometry import LineString, Point, Polygon
 
-import coverage
 from surveytoolbox.bdc import bearing_distance_from_coordinates
 from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
-from surveytoolbox.fmt_dms import format_as_dms
 
-lidar_range = 60
-lidar_dist = 1
-move_dist = 0.5
-lidar_width = 15
+lidar_range = 60  # Number of LiDAR points (lasers) to generate
+lidar_dist = 1  # Distance of LiDAR in front of robot in metres
+move_dist = 0.3  # Distance to move per turn in metres
+lidar_width = 15  # The angle from the centre to the left and right most LiDAR points
+obj_gap = 0.3  # Minimum distance before two objects are considered seperate
 
-QUEUE_LEN = 10
 ON_COURSE = 0
 OFF_COURSE = 1
 Q_SIZE = 10
@@ -63,6 +62,7 @@ OBJECT_TO_RIGHT = 1
 OBJECT_TO_CENTRE = 0
 SIGINT = 0
 DIRECT = False
+REAL_TIME = False
 
 
 class NoTurns(Exception):
@@ -71,6 +71,54 @@ class NoTurns(Exception):
 
 class NoPath(Exception):
     pass
+
+
+class Ends:
+
+    def __init__(self, p1, p2):
+        self.p1 = p1
+        self.p2 = p2
+
+    def line(self):
+        return LineString([self.p1, self.p2])
+
+    def array(self):
+        return np.array([[self.p1.x, self.p1.y], [self.p2.x, self.p2.y]])
+
+    def points(self):
+        return [self.p1, self.p2]
+
+    def close_to(self, other):
+        if utm_dist(self.p1, other.p1) < 0.5:
+            return True
+        if utm_dist(self.p1, other.p2) < 0.5:
+            return True
+        if utm_dist(self.p2, other.p1) < 0.5:
+            return True
+        if utm_dist(self.p2, other.p2) < 0.5:
+            return True
+        return False
+
+    def overlaps(self, other):
+        for r in itertools.product(self.points(), other.points()):
+            if r[0].touches(r[1]):
+                return True
+        return False
+
+    def touches(self, other):
+        if self.line().intersects(other.line()):
+            return True
+        return False
+
+    def collinear(self, other):
+        s1 = (self.p2.y - self.p1.y) / (self.p2.x - self.p1.x)
+        s2 = (other.p2.y - other.p1.y) / (other.p2.x - other.p1.x)
+        return math.degrees(math.atan((s2 - s1) / (1 + (s2 * s1)))) < 5
+
+    def is_same_line(self, other):
+        if self.close_to(other) or self.overlaps(other) or self.touches(other):
+            return True
+        return False
 
 
 class Robot:
@@ -90,6 +138,7 @@ class Robot:
         self.per_poly = None
         self.dist_travelled = 0
         self.detected_ends = []
+        self.detected_points = []
         self.tries = 0
 
     # Route traversal functions start
@@ -125,7 +174,7 @@ class Robot:
         """Based on the percentage of on-course values, decide if the
         robot is considered off-course or not
         """
-        if self.per_on_course() < 0.6:
+        if self.per_on_course() < 0.8:
             return OFF_COURSE
         return ON_COURSE
 
@@ -134,6 +183,14 @@ class Robot:
         checkpoint - may not be used in real application.
         """
         self.inside = [0] * Q_SIZE
+
+    def seperate_lidar_ranges(self):
+        centre_lines = self.lidar_range()[0][int(lidar_range *
+                                                 (1 / 3)):int(lidar_range *
+                                                              (2 / 3))]
+        left_lines = self.lidar_range()[0][0:int(lidar_range * (1 / 3))]
+        right_lines = self.lidar_range()[0][int(lidar_range * (2 / 3)):-1]
+        return centre_lines, left_lines, right_lines
 
     def is_outside_buffer(self, path, current, target):
         """Based on the robots distance from the line between its
@@ -157,11 +214,18 @@ class Robot:
     # end
 
     def max_tries(self, path, target):
+        """Determine if the robot has exceeded the maximum number of
+        tries when traversing to a point
+
+        If the robot has no progress in the last N moves then it may
+        be stuck. This function with determine this, and in turn cause
+        A* to be called to find a new path.
+        """
         if len(self.visited) > 5 and self.tries > 5:
             dist = utm_dist([self.x, self.y], self.visited[-5])
-            if dist <= 1:
+            if dist <= move_dist:
                 return 0
-        # tries = int((dist / 0.3) * 1.1)
+        # tries = int((dist / move_dist) * 1.1)
         # print("Try " + str(self.tries) + " out of " + str(tries))
         # if dist <= 1:
         #     tries = 0
@@ -187,56 +251,83 @@ class Robot:
         plt.imshow(matrix, interpolation=None, cmap='viridis')
         plt.show()
 
-    def is_accessible(self, target):
-        print("Is Accessible")
-        b = self.per_poly.bounds  # minx, miny, maxx, maxy
-        d = list(set(self.detected_ends))
-        m_x = int(shift_float(b[2]) - shift_float(b[0])) + 1
-        m_y = int(shift_float(b[3]) - shift_float(b[1])) + 1
-        matrix = [[1] * max(m_x, m_y)] * max(m_y, m_x)
-        matrix = np.array(matrix)
-        print(len(d))
+    def detected_points_to_lines(self):
+        """Reduce the detected points to simpler linestrings.
 
+        Using all detected points quickly gets out of hand, so lines
+        are used instead. The end points of these lines can be used to
+        replace the current detected points to save memory and
+        processing time.
+        """
         lines = []
         len_d = 0
-        while len_d < len(d) - 1:
-            line = []
-            while utm_dist([
-                    list(self.detected_ends)[len_d].x,
-                    list(self.detected_ends)[len_d].y
-            ], [
-                    list(self.detected_ends)[len_d + 1].x,
-                    list(self.detected_ends)[len_d + 1].y
-            ]) < 0.5 and len_d < len(list(self.detected_ends)) - 2:
-                line.append(list(self.detected_ends)[len_d])
+        self.detected_points = list(set(self.detected_points))
+        for i in self.detected_ends:
+            self.detected_points.append(i.p1)
+            self.detected_points.append(i.p2)
+        while len_d < len(self.detected_points) - 1:
+            line = [self.detected_points[len_d]]
+            while utm_dist(
+                [self.detected_points[len_d].x, self.detected_points[len_d].y],
+                [
+                    self.detected_points[len_d + 1].x,
+                    self.detected_points[len_d + 1].y
+                ]) < obj_gap and len_d < len(self.detected_points) - 2:
+                line.append(list(self.detected_points)[len_d + 1])
                 len_d += 1
             if len(line) >= 2:
                 lines.append(LineString(line))
             len_d += 1
+        return lines
+
+    def reduce_detected_points(self):
+        """Reduce all points on the same line down the only the end
+        points.
+
+        This is done to reduce memory and processing time. Inner
+        points are still needed for the A* grid but that function
+        shouldn't need to be run very often.
+        """
+        lines = self.detected_points_to_lines()
         for line in lines:
-            for point in line.coords:
-                x = int(shift_float(point[0]) - shift_float(b[0]))
-                y = int(shift_float(point[1]) - shift_float(b[1]))
-                for i in [-1, 0, 1]:
-                    for j in [-1, 0, 1]:
-                        matrix[x + i][y + j] = 0
-        np.savetxt('./Tests/grid.out', np.array(matrix), delimiter=',')
+            self.detected_ends.append(
+                Ends(Point([line.coords[0][0], line.coords[0][1]]),
+                     Point([line.coords[-1][0], line.coords[-1][1]])))
+        new_lines = []
+        added_ends = set()
+        for i in self.detected_ends:
+            if i.p1 in added_ends or i.p2 in added_ends:
+                continue
+            merge_points = [i.p1, i.p2]
+            for j in self.detected_ends:
+                if i == j:
+                    continue
+                if i.is_same_line(j):
+                    if j.p1 not in added_ends:
+                        merge_points.append(j.p1)
+                        added_ends.add(j.p1)
+                    if j.p2 not in added_ends:
+                        merge_points.append(j.p2)
+                        added_ends.add(j.p2)
+            if len(new_lines) > 2:
+                new_lines.append(LineString(merge_points))
 
-        # self.print_finder_graph(target, b, matrix)
+        new_lines = list(set(new_lines))
+        for line in new_lines:
+            p1 = Point([line.coords[0][0], line.coords[0][1]])
+            p2 = Point([line.coords[-1][0], line.coords[-1][1]])
+            self.detected_ends.append(Ends(p1, p2))
 
-        grid = Grid(matrix=matrix)
-        start = grid.node(int(shift_float(self.x) - shift_float(b[0])),
-                          int(shift_float(self.y) - shift_float(b[1])))
-        end = grid.node(int(shift_float(target[0]) - shift_float(b[0])),
-                        int(shift_float(target[1]) - shift_float(b[1])))
+        # self.detected_points = []
 
-        # AStarFinder, BestFirst, BiAStarFinder, DijkstraFinder,
-        # IDAStarFinder, BreadthFirstFinder, MinimumSpanningTree
-        finder = BreadthFirstFinder(diagonal_movement=DiagonalMovement.always)
-        path, runs = finder.find_path(start, end, grid)
-
+    def clean_apath(self, path, b):
+        """Takes an A* path and removes any points that violates a
+        known boundary.
+        """
         apath = []
+        lines = self.detected_points_to_lines()
         for p in path:
+            # Points need shifting back to original UTM scale
             apath.append([
                 shift_int(p[0] + shift_float(b[0])),
                 shift_int(p[1] + shift_float(b[1]))
@@ -245,11 +336,6 @@ class Robot:
         # Check if the route violates the detected boundaries
         for p in apath:
             coll = False
-            # line3 = LineString([[self.x, self.y], p])
-            # for line in lines:
-            #     if line.intersects(line3):
-            #         coll = True
-            #         break
             for pp in apath:
                 if pp == p:
                     continue
@@ -268,7 +354,44 @@ class Robot:
         for i in range(2):
             if len(checked_apath) > 2:
                 del checked_apath[2 - 1::2]
-        return (len(checked_apath) - 1) > 2, checked_apath
+        return checked_apath
+
+    def is_accessible(self, target):
+        """When the robot is unable to make progress it may be stuck,
+        using it's knowledge of the scene an A* path is generated. If
+        no path can be generated then the point is unreachable and
+        shall be skipped.
+        """
+        b = self.per_poly.bounds  # minx, miny, maxx, maxy
+        d = list(set(self.detected_points_to_lines()))
+        m_x = int(shift_float(b[2]) - shift_float(b[0])) + 1
+        m_y = int(shift_float(b[3]) - shift_float(b[1])) + 1
+        matrix = [[1] * max(m_x, m_y)] * max(m_y, m_x)
+        matrix = np.array(matrix)
+        print(len(d))
+
+        for line in d:
+            for point in line.coords:
+                x = int(shift_float(point[0]) - shift_float(b[0]))
+                y = int(shift_float(point[1]) - shift_float(b[1]))
+                for i in [-1, 0, 1]:
+                    for j in [-1, 0, 1]:
+                        matrix[x + i][y + j] = 0
+
+        # self.print_finder_graph(target, b, matrix)
+        grid = Grid(matrix=matrix)
+        start = grid.node(int(shift_float(self.x) - shift_float(b[0])),
+                          int(shift_float(self.y) - shift_float(b[1])))
+        end = grid.node(int(shift_float(target[0]) - shift_float(b[0])),
+                        int(shift_float(target[1]) - shift_float(b[1])))
+
+        # AStarFinder, BestFirst, BiAStarFinder, DijkstraFinder,
+        # IDAStarFinder, BreadthFirstFinder, MinimumSpanningTree
+        finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+        path, runs = finder.find_path(start, end, grid)
+
+        apath = self.clean_apath(path, b)
+        return len(apath) > 1, apath
 
     def lidar_range(self):
         """Generate an array of lines at different angles to simulate
@@ -320,12 +443,11 @@ class Robot:
         Return:
             The nearest object, or merged objects.
         """
-        print("Finding nearest")
         nearest = points
         for i in range(1, len(points)):
             # If robot cannot fit in the gap consider it one solid object
             if utm_dist([points[i - 1].x, points[i - 1].y],
-                        [points[i].x, points[i].y]) < 0.5:
+                        [points[i].x, points[i].y]) < obj_gap:
                 nearest.append(points[i])
             else:
                 # If the new point is closer make new list - tackle closest objects first
@@ -346,7 +468,6 @@ class Robot:
             points: All points detected by the robot that are in range
                 and being considered at this time.
         """
-        print("Removing hidden")
         new_points = []
         for i in range(len(points)):
             behind = False
@@ -378,7 +499,6 @@ class Robot:
         Returns:
             All objects within range of the robot.
         """
-        print("Detecting objects")
         points = []
         lidar_lines = self.lidar_range()[0]
         for nogo in nogos[0]:  # For each object
@@ -406,8 +526,9 @@ class Robot:
         if len(points) > 0:
             points = self.remove_hidden(points)
             for p in points:
-                self.detected_ends.append(p)
+                self.detected_points.append(p)
             points = self.find_nearest(points)
+            # self.reduce_detected_points()
 
         return points
 
@@ -444,7 +565,8 @@ class Robot:
         # and the target is less than the given LiDAR range
         # move directly to the target as there are no obstacles
         # in the way
-        if self.heading == target_loc['bg'] and target_loc['dist_2d'] < 0.5:
+        if self.heading == target_loc[
+                'bg'] and target_loc['dist_2d'] < move_dist:
             self.clear_q()
             metres = (target_loc['dist_2d'] - 0.05)
         pos = coordinates_from_bearing_distance(
@@ -474,8 +596,12 @@ class Robot:
                     ELEVATION: 0
                 }, self.heading, -0.15)
             self.dist_travelled += 0.15
+            if REAL_TIME:
+                time.sleep(0.15 / 0.89)
         else:
             self.dist_travelled += metres
+            if REAL_TIME:
+                time.sleep(metres / 0.89)
 
         self.x = pos['e']
         self.y = pos['n']
@@ -543,7 +669,6 @@ class Robot:
         Returns:
             The detected points as a shape, line, or single point.
         """
-        print("Detecting line")
         self.find_target(nogos, path[target])
         n = nogos.copy()
         n.append(test_shape)
@@ -564,17 +689,17 @@ class Robot:
 
 
 def printable_detected_ends(ends):
-    if len(ends) < 2:
+    if len(ends) <= 2:
         return []
     lines = []
     len_d = 0
     while len_d < len(ends) - 1:
-        line = []
+        line = [list(ends)[len_d]]
         while utm_dist(
             [list(ends)[len_d].x, list(ends)[len_d].y],
             [list(ends)[len_d + 1].x,
              list(ends)[len_d + 1].y]) < 0.5 and len_d < len(list(ends)) - 2:
-            line.append(list(ends)[len_d])
+            line.append(list(ends)[len_d + 1])
             len_d += 1
         if len(line) >= 2:
             lines.append([[
@@ -584,6 +709,12 @@ def printable_detected_ends(ends):
                 LineString(line).coords[-1][0],
                 LineString(line).coords[-1][1]
             ]])
+        elif len(line) == 1:
+            lines.append([[line[0].x, line[0].y], [
+                line[0].x,
+                line[0].y,
+            ]])
+
         len_d += 1
     return lines
 
@@ -593,7 +724,6 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     if not PRINT:
         return 0
 
-    print("Printing Graph")
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
 
@@ -603,7 +733,7 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
              alpha=0.5,
              color='orange')
     for nogo in nogos:
-        plt.plot(nogo[:, 0], nogo[:, 1])
+        plt.plot(nogo[:, 0], nogo[:, 1], color='black')
     plt.plot(test_shape[:, 0], test_shape[:, 1], color='blue')
     plt.plot(mower.visited[:, 0], mower.visited[:, 1], color='blue')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
@@ -611,8 +741,7 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(*centre_line.xy)
     # for p in random.sample(mower.detected_ends,
     #                        min(50, len(mower.detected_ends))):
-
-    print_ends = printable_detected_ends(list(set(mower.detected_ends)))
+    print_ends = printable_detected_ends(list(set(mower.detected_points)))
     print("Printing " + str(len(print_ends)) + " detected ends")
     for p in print_ends:
         plt.plot(np.array(p)[:, 0], np.array(p)[:, 1], color='red')
@@ -646,17 +775,32 @@ def shift_int(num):
 def utm_dist(p1, p2):
     """Short wrapper function to reduce lines of code.
     """
-    dist = bearing_distance_from_coordinates(
-        {
-            EASTING: p1[0],
-            NORTHING: p1[1],
-            ELEVATION: 0
-        }, {
-            EASTING: p2[0],
-            NORTHING: p2[1],
-            ELEVATION: 0
-        })
-    return dist['dist_2d']
+    if (type(p1) is list
+            or type(p1) is np.ndarray) and (type(p2) is list
+                                            or type(p2) is np.ndarray):
+        dist = bearing_distance_from_coordinates(
+            {
+                EASTING: p1[0],
+                NORTHING: p1[1],
+                ELEVATION: 0
+            }, {
+                EASTING: p2[0],
+                NORTHING: p2[1],
+                ELEVATION: 0
+            })
+        return dist['dist_2d']
+    elif type(p1) is Point and type(p2) is Point:
+        dist = bearing_distance_from_coordinates(
+            {
+                EASTING: p1.x,
+                NORTHING: p1.y,
+                ELEVATION: 0
+            }, {
+                EASTING: p2.x,
+                NORTHING: p2.y,
+                ELEVATION: 0
+            })
+        return dist['dist_2d']
 
 
 def collinear(p0, p1, p2):
@@ -777,19 +921,25 @@ def lidar_intersecting(centre, left, right, mower, detected_line):
     Returns:
         If a line has been detected and in which direction.
     """
-    print("LiDAR Intersecting")
     l_dist, l = get_closest_intersect(mower, detected_line, left)
     r_dist, r = get_closest_intersect(mower, detected_line, right)
     c_dist, c = get_closest_intersect(mower, detected_line, centre)
 
     _, l_most = get_closest_intersect(mower, detected_line, left[0:3])
     _, r_most = get_closest_intersect(mower, detected_line, right[-3:-1])
-    if l_dist <= 0.31 or r_dist <= 0.31 or c_dist <= 0.31:
+
+    # If the mower is too close to an object to move in that direction
+    if l_dist <= (move_dist / 4) or r_dist <= (move_dist /
+                                               4) or c_dist <= (move_dist / 4):
         print("too close")
         return True, OBJECT_TO_CENTRE
     if c:
         print("centre")
         return True, OBJECT_TO_CENTRE
+
+    # This should be handled when collecting points and merging close
+    # by points, but if the considered LiDAR range is equal to the
+    # distance considered when merging then this may be quicker
     if l_most and r_most:
         print("left and right - won't fit")
         return True, OBJECT_TO_CENTRE
@@ -857,72 +1007,49 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
         centre_bear: The list of bearings to try when iteratively
             turning left and right.
     """
-    print("Avoidance...")
     while utm_dist([mower.x, mower.y], path[target]) > 0.2:
         m = 0
         detected_line, img = mower.get_detected_line(target, nogos, 0,
                                                      centre_line, test_shape,
                                                      current, img, path)
+        # If detected objects iteratively look for new direction until none
+        if detected_line is not None:
 
-        # If no detected objects, break to move forward
-        if detected_line is None:
-            mower.move(move_dist, path[target])
-            # The 'path' is different when off course due to the new determined
-            # back-on-track point
-            if target == OFF_COURSE_TARGET:
-                t = 1
-            else:
-                t = target
-            mower.enqueue(mower.is_outside_buffer(path, current, t))
-            mower.visited = np.vstack((mower.visited, [mower.x, mower.y]))
-            print_graph(mower, test_shape, nogos, path, current, target, img,
-                        detected_line)
-            img += 1
-            m = 0
-            # Returning to re-calculate temporary target
-            if mower.is_off_course():
-                return img
-            continue
-        centre_lines = mower.lidar_range()[0][int(lidar_range *
-                                                  (1 / 3)):int(lidar_range *
-                                                               (2 / 3))]
-        left_lines = mower.lidar_range()[0][0:int(lidar_range * (1 / 3))]
-        right_lines = mower.lidar_range()[0][int(lidar_range * (2 / 3)):-1]
-        lidar_intersect, side = lidar_intersecting(centre_lines, left_lines,
-                                                   right_lines, mower,
-                                                   detected_line)
-        while lidar_intersect:
-            if side == OBJECT_TO_LEFT:
-                bear = right_bear
-                line = right_lines
-            elif side == OBJECT_TO_RIGHT:
-                bear = left_bear
-                line = left_lines
-            else:
-                bear = centre_bear
-                line = centre_lines
-
-            detected_line, img = mower.get_detected_line(
-                target, nogos, bear[m], line, test_shape, current, img, path)
-
-            # Once no obstacles are found, break to move foward
-            if detected_line is None:
-                break
-            centre_lines = mower.lidar_range()[0][int(lidar_range *
-                                                      (1 /
-                                                       3)):int(lidar_range *
-                                                               (2 / 3))]
-            left_lines = mower.lidar_range()[0][0:int(lidar_range * (1 / 3))]
-            right_lines = mower.lidar_range()[0][int(lidar_range * (2 / 3)):-1]
+            centre_lines, left_lines, right_lines = mower.seperate_lidar_ranges(
+            )
             lidar_intersect, side = lidar_intersecting(centre_lines,
                                                        left_lines, right_lines,
                                                        mower, detected_line)
-            print(bear[m])
-            m += 1
-            # If no turning options left, end. - Handle points impossible to reach
-            if m == len(bear) - 1:
-                print(side)
-                raise NoTurns("Couldn't get to point - no where to turn")
+            while lidar_intersect:
+                if side == OBJECT_TO_LEFT:
+                    bear = right_bear
+                    line = right_lines
+                elif side == OBJECT_TO_RIGHT:
+                    bear = left_bear
+                    line = left_lines
+                else:
+                    bear = centre_bear
+                    line = centre_lines
+
+                detected_line, img = mower.get_detected_line(
+                    target, nogos, bear[m], line, test_shape, current, img,
+                    path)
+
+                # Once no obstacles are found, break to move foward
+                if detected_line is None:
+                    break
+                centre_lines, left_lines, right_lines = mower.seperate_lidar_ranges(
+                )
+                lidar_intersect, side = lidar_intersecting(
+                    centre_lines, left_lines, right_lines, mower,
+                    detected_line)
+                # print(bear[m])
+                m += 1
+                # If no turning options left, end. - Handle points impossible to reach
+                if m == len(bear) - 1:
+                    print(side)
+                    raise NoTurns("Couldn't get to point - no where to turn")
+
         mower.move(move_dist, path[target])
         if target == OFF_COURSE_TARGET:
             t = 1
@@ -958,6 +1085,7 @@ def main(to_test, run_num):
     # NOTE: Please ensure the perimeter is name obstacle_0.out
     # will all other nogo-zones in ascending order e.g. obstacle_1.out, ...
 
+    # Delete all old image files
     files = glob.glob('./Imgs/*.png')
     for f in files:
         os.remove(f)
@@ -972,13 +1100,15 @@ def main(to_test, run_num):
     skipped = 0
     target = current + 1
 
+    # Init robot
     mower = Robot(path[current, 0], path[current, 1], target)
     mower.per_poly = Polygon(test_shape)
     mower.visited = np.vstack((mower.visited, [path[0, 0], path[0, 1]]))
     mower.lidar_range()
 
+    # Generate or read nogos
     nogos = []
-    if to_test is False:
+    if to_test is False:  # Read in given obstacle files
         nogo_files = sorted(list(glob.glob("obstacle*")))
         print(nogo_files)
         for i in nogo_files:
@@ -991,7 +1121,7 @@ def main(to_test, run_num):
                 mower.nogo_polys.append(Polygon(nogos[n]))
             else:
                 mower.nogo_polys.append(LineString(nogos[n]))
-    else:
+    else:  # Generate random obstacles within the given perimeter
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
@@ -1019,10 +1149,9 @@ def main(to_test, run_num):
                            delimiter=',')
                 mower.nogo_polys.append(new_poly)
 
-    ## Initial plot to view and confirm shapes and mower position are correct
+    # Initial plot to view and confirm shapes and mower position are correct
     gpd.GeoSeries(mower.lidar_range()[1]).plot()
     plt.plot(test_shape[:, 0], test_shape[:, 1])
-    # plt.scatter(*detected_line.xy, color='red')
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
     plt.plot(*centre_line.xy)
     for nogo in nogos:
@@ -1043,7 +1172,7 @@ def main(to_test, run_num):
     ]
     img = 0
     prev_apath = []
-    signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGINT, signal_handler)
 
     while target < path_len and SIGINT == 0:
         # If reached target within region of inaccuracy
@@ -1052,9 +1181,11 @@ def main(to_test, run_num):
             target += 1
             mower.tries = 0
             continue
+        # If the mower is considered stuck
         if mower.tries > mower.max_tries(path, target):
             print("Trying A*")
             access, apath = mower.is_accessible(path[target])
+            # If no path then skip this point as it is not reachable
             if not access or apath == [[mower.x, mower.y]
                                        ] or apath == prev_apath:
                 current += 1
@@ -1069,6 +1200,8 @@ def main(to_test, run_num):
                 atarget = 1
                 acurrent = 0
                 for a in apath[:-1]:
+                    # A* paths are not always possible given it relies on the
+                    # robot's knowledge of the scene
                     try:
                         img = avoidance(mower, np.array(apath), atarget, nogos,
                                         centre_line, test_shape, acurrent, img,
@@ -1083,6 +1216,7 @@ def main(to_test, run_num):
                     acurrent += 1
             mower.tries = 0
             prev_apath = apath
+        # If the mower is off course
         elif mower.is_off_course():
             # Pick a point between robot and desired course
             p = perpen_point([mower.x, mower.y], path[current], path[target])
@@ -1138,24 +1272,32 @@ def main(to_test, run_num):
     f, ax = plt.subplots()
     plt.axis('off')
     s.buffer(0.15).plot(alpha=0.5, ax=ax)
-    f = open("./Tests/" + str(run_num) + ".csv", 'w')
-    writer = csv.writer(f)
-    writer.writerow([
-        current, path_len, skipped,
-        s.buffer(0.15)[0].area, mower.dist_travelled
-    ])
-    f.close()
+
     print("Got to point " + str(current) + " out of " + str(path_len) +
           " had to skip " + str(skipped))
-    print("Total area: " + str(s.buffer(0.15)[0].area) + " m^2")
+    print("Total area: " + str(Polygon(test_shape).area) + " m^2")
+    print("Total area covered: " + str(s.buffer(0.15)[0].area) + " m^2")
+    missed = 0
+    for n in mower.nogo_polys:
+        missed += n.area
+    print("Total area inside no-go: " + str(missed) + " m^2")
     print("Total distance travelled: " + str(mower.dist_travelled) + " m")
+
+    f = open("./Tests/" + str(run_num) + ".csv", 'w')
+    writer = csv.writer(f)
+    writer.writerow(
+        [skipped, missed,
+         s.buffer(0.15)[0].area, mower.dist_travelled])
+    f.close()
+
     plt.plot(test_shape[:, 0], test_shape[:, 1])
     for nogo in nogos:
         plt.plot(nogo[:, 0], nogo[:, 1])
     # global detected_ends
     # print(len(detected_ends))
+    mower.reduce_detected_points()
     for p in list(set(mower.detected_ends)):
-        plt.scatter(p.x, p.y)
+        plt.plot(p.array()[:, 0], p.array()[:, 1], color='red')
     if to_test is None:
         plt.savefig("./Imgs/end.png")
     else:
@@ -1163,6 +1305,8 @@ def main(to_test, run_num):
 
 
 if __name__ == "__main__":
+    profiler = cProfile.Profile()
+    profiler.enable()
     runs = 1
     if '-t' in sys.argv:
         to_test = True
@@ -1175,5 +1319,12 @@ if __name__ == "__main__":
         PRINT = True
     if '-d' in sys.argv:
         DIRECT = True
+    if '-r' in sys.argv:
+        REAL_TIME = True
+        move_dist = 0.1
     for i in range(int(runs)):
         main(to_test, i)
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('tottime')
+    stats.strip_dirs()
+    stats.print_stats()
