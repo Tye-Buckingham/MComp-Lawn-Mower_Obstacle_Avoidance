@@ -31,6 +31,8 @@ import utm
 from mathutils import Vector
 from mathutils.geometry import intersect_point_line
 from matplotlib.colors import ListedColormap
+from shapely.geometry import LineString, Point, Polygon
+
 from pathfinding.core.diagonal_movement import DiagonalMovement
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
@@ -38,9 +40,8 @@ from pathfinding.finder.best_first import BestFirst
 from pathfinding.finder.bi_a_star import BiAStarFinder
 from pathfinding.finder.breadth_first import BreadthFirstFinder
 from pathfinding.finder.dijkstra import DijkstraFinder
+from pathfinding.finder.ida_star import IDAStarFinder
 from pathfinding.finder.msp import MinimumSpanningTree
-from shapely.geometry import LineString, Point, Polygon
-
 from surveytoolbox.bdc import bearing_distance_from_coordinates
 from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import BEARING, EASTING, ELEVATION, NORTHING
@@ -49,8 +50,8 @@ lidar_range = 60  # Number of LiDAR points (lasers) to generate
 lidar_dist = 1  # Distance of LiDAR in front of robot in metres
 move_dist = 0.3  # Distance to move per turn in metres
 lidar_width = 15  # The angle from the centre to the left and right most LiDAR points
-obj_gap = 0.3  # Minimum distance before two objects are considered seperate
-
+obj_gap = 0.1  # Minimum distance before two objects are considered seperate
+try_count = 5
 ON_COURSE = 0
 OFF_COURSE = 1
 Q_SIZE = 10
@@ -174,7 +175,7 @@ class Robot:
         """Based on the percentage of on-course values, decide if the
         robot is considered off-course or not
         """
-        if self.per_on_course() < 0.8:
+        if self.per_on_course() < 0.90:
             return OFF_COURSE
         return ON_COURSE
 
@@ -221,8 +222,8 @@ class Robot:
         be stuck. This function with determine this, and in turn cause
         A* to be called to find a new path.
         """
-        if len(self.visited) > 5 and self.tries > 5:
-            dist = utm_dist([self.x, self.y], self.visited[-5])
+        if len(self.visited) > try_count and self.tries > try_count:
+            dist = utm_dist([self.x, self.y], self.visited[-(try_count)])
             if dist <= move_dist:
                 return 0
         # tries = int((dist / move_dist) * 1.1)
@@ -243,9 +244,9 @@ class Robot:
             int(shift_float(target[1]) - shift_float(b[1]))
         ]
         matrix[int(shift_float(self.x) - shift_float(b[0]))][int(
-            shift_float(self.y) - shift_float(b[1]))] = 0
+            shift_float(self.y) - shift_float(b[1]))] = 3
         matrix[int(shift_float(target[0]) - shift_float(b[0]))][int(
-            shift_float(target[1]) - shift_float(b[1]))] = 0
+            shift_float(target[1]) - shift_float(b[1]))] = 3
         plt.text(to[0], to[1], 'target', ha='center', va='center')
         plt.text(go[0], go[1], 'current', ha='center', va='center')
         plt.imshow(matrix, interpolation=None, cmap='viridis')
@@ -363,7 +364,8 @@ class Robot:
         shall be skipped.
         """
         b = self.per_poly.bounds  # minx, miny, maxx, maxy
-        d = list(set(self.detected_points_to_lines()))
+        d = printable_detected_ends(self.detected_points)
+
         m_x = int(shift_float(b[2]) - shift_float(b[0])) + 1
         m_y = int(shift_float(b[3]) - shift_float(b[1])) + 1
         matrix = [[1] * max(m_x, m_y)] * max(m_y, m_x)
@@ -371,14 +373,14 @@ class Robot:
         print(len(d))
 
         for line in d:
-            for point in line.coords:
+            for point in LineString(line).coords:
                 x = int(shift_float(point[0]) - shift_float(b[0]))
                 y = int(shift_float(point[1]) - shift_float(b[1]))
                 for i in [-1, 0, 1]:
                     for j in [-1, 0, 1]:
-                        matrix[x + i][y + j] = 0
+                        matrix[y + i][x + j] = -1
 
-        # self.print_finder_graph(target, b, matrix)
+        self.print_finder_graph(target, b, matrix)
         grid = Grid(matrix=matrix)
         start = grid.node(int(shift_float(self.x) - shift_float(b[0])),
                           int(shift_float(self.y) - shift_float(b[1])))
@@ -387,10 +389,18 @@ class Robot:
 
         # AStarFinder, BestFirst, BiAStarFinder, DijkstraFinder,
         # IDAStarFinder, BreadthFirstFinder, MinimumSpanningTree
-        finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+        finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
         path, runs = finder.find_path(start, end, grid)
-
-        apath = self.clean_apath(path, b)
+        apath = [[self.x, self.y]]
+        for p in path:
+            matrix[p.y][p.x] = 2
+            # Points need shifting back to original UTM scale
+            apath.append([
+                shift_int(p.x + shift_float(b[0])),
+                shift_int(p.y + shift_float(b[1]))
+            ])
+        self.print_finder_graph(target, b, matrix)
+        # apath = self.clean_apath(path, b)
         return len(apath) > 1, apath
 
     def lidar_range(self):
@@ -423,7 +433,8 @@ class Robot:
                     EASTING: self.x,
                     NORTHING: self.y,
                     ELEVATION: 0
-                }, (self.heading - lidar_width) + (i / 2), lidar_dist)
+                }, (self.heading - lidar_width) +
+                (i / (lidar_range / (lidar_width * 2))), lidar_dist)
 
             inter.append(LineString([(self.x, self.y), (pos['e'], pos['n'])]))
 
@@ -551,6 +562,7 @@ class Robot:
             target: The next node in the route. It's current target
                 coordinates.
         """
+
         target_loc = bearing_distance_from_coordinates(
             {
                 EASTING: self.x,
@@ -601,10 +613,13 @@ class Robot:
         else:
             self.dist_travelled += metres
             if REAL_TIME:
-                time.sleep(metres / 0.89)
+                time.sleep(abs(metres) / 0.89)
 
         self.x = pos['e']
         self.y = pos['n']
+        if REAL_TIME:
+            self.x += np.random.normal(-0.02, 0.02)
+            self.y += np.random.normal(-0.02, 0.02)
         self.tries += 1
 
     def find_target(self, nogos, target):
@@ -1150,16 +1165,17 @@ def main(to_test, run_num):
                 mower.nogo_polys.append(new_poly)
 
     # Initial plot to view and confirm shapes and mower position are correct
-    gpd.GeoSeries(mower.lidar_range()[1]).plot()
-    plt.plot(test_shape[:, 0], test_shape[:, 1])
     centre_line = mower.lidar_range()[0][int(lidar_range / 2)]
-    plt.plot(*centre_line.xy)
-    for nogo in nogos:
-        plt.plot(nogo[:, 0], nogo[:, 1])
-    plt.scatter(path[current, 0], path[current, 1])
-    plt.scatter(mower.x, mower.y, color='blue')
-    plt.scatter(path[target, 0], path[target, 1])
-    plt.show()
+    if to_test is False:
+        gpd.GeoSeries(mower.lidar_range()[1]).plot()
+        plt.plot(test_shape[:, 0], test_shape[:, 1])
+        plt.plot(*centre_line.xy)
+        for nogo in nogos:
+            plt.plot(nogo[:, 0], nogo[:, 1])
+        plt.scatter(path[current, 0], path[current, 1])
+        plt.scatter(mower.x, mower.y, color='blue')
+        plt.scatter(path[target, 0], path[target, 1])
+        plt.show()
 
     # If the robot detects an object to the right, turn left
     right_bear = list(range(4, 180, 4))
@@ -1186,6 +1202,7 @@ def main(to_test, run_num):
             print("Trying A*")
             access, apath = mower.is_accessible(path[target])
             # If no path then skip this point as it is not reachable
+            print(apath)
             if not access or apath == [[mower.x, mower.y]
                                        ] or apath == prev_apath:
                 current += 1
@@ -1229,7 +1246,8 @@ def main(to_test, run_num):
             dx = p[0] - path[target][0]
             dy = p[1] - path[target][1]
             # Offset this point to be towards the next route 'checkpoint'
-            p = np.array([p[0] + (-0.1) * dx, p[1] + (-0.1) * dy])
+            if not REAL_TIME:
+                p = np.array([p[0] + (-0.1) * dx, p[1] + (-0.1) * dy])
             # Check if object is between mower and desired route
             detected_line, img = mower.get_detected_line(
                 OFF_COURSE_TARGET, nogos, 0, centre_line, test_shape, current,
@@ -1298,15 +1316,17 @@ def main(to_test, run_num):
     mower.reduce_detected_points()
     for p in list(set(mower.detected_ends)):
         plt.plot(p.array()[:, 0], p.array()[:, 1], color='red')
-    if to_test is None:
+    if to_test is False:
         plt.savefig("./Imgs/end.png")
     else:
         plt.savefig("./Imgs/" + str(run_num) + "_end.png")
 
 
 if __name__ == "__main__":
-    profiler = cProfile.Profile()
-    profiler.enable()
+    if '-s' in sys.argv:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
     runs = 1
     if '-t' in sys.argv:
         to_test = True
@@ -1321,10 +1341,24 @@ if __name__ == "__main__":
         DIRECT = True
     if '-r' in sys.argv:
         REAL_TIME = True
-        move_dist = 0.1
+        move_dist = 0.1  # RTK in-accuracy of +-20cm (with some simple noise added)
+        Q_SIZE = 30  # This will depend on sampling rate - something thats hard to implement
+        try_count = 10  # Needs testing to determine good value
+        lidar_dist = 0.3  # Based on LiDAR planned to use
+        lidar_width = 50  # Same as above
+        lidar_range = 100  # Same as above
+    else:
+        Q_SIZE = 10
+        lidar_dist = 1
+        try_count = 5
+        lidar_width = 15
+        lidar_range = 60
+        move_dist = 0.3
     for i in range(int(runs)):
         main(to_test, i)
-    profiler.disable()
-    stats = pstats.Stats(profiler).sort_stats('tottime')
-    stats.strip_dirs()
-    stats.print_stats()
+
+    if '-s' in sys.argv:
+        profiler.disable()
+        stats = pstats.Stats(profiler).sort_stats('tottime')
+        stats.strip_dirs()
+        stats.print_stats()
