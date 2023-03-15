@@ -236,17 +236,17 @@ class Robot:
 
     def print_finder_graph(self, target, b, matrix):
         go = [
-            int(shift_float(self.x) - shift_float(b[0])),
-            int(shift_float(self.y) - shift_float(b[1]))
+            int(shift_float(self.y) - shift_float(b[1])),
+            int(shift_float(self.x) - shift_float(b[0]))
         ]
         to = [
-            int(shift_float(target[0]) - shift_float(b[0])),
-            int(shift_float(target[1]) - shift_float(b[1]))
+            int(shift_float(target[1]) - shift_float(b[1])),
+            int(shift_float(target[0]) - shift_float(b[0]))
         ]
-        matrix[int(shift_float(self.x) - shift_float(b[0]))][int(
-            shift_float(self.y) - shift_float(b[1]))] = 3
-        matrix[int(shift_float(target[0]) - shift_float(b[0]))][int(
-            shift_float(target[1]) - shift_float(b[1]))] = 3
+        matrix[int(shift_float(self.y) - shift_float(b[1]))][int(
+            shift_float(self.x) - shift_float(b[0]))] = 3
+        matrix[int(shift_float(target[1]) - shift_float(b[1]))][int(
+            shift_float(target[0]) - shift_float(b[0]))] = 3
         plt.text(to[0], to[1], 'target', ha='center', va='center')
         plt.text(go[0], go[1], 'current', ha='center', va='center')
         plt.imshow(matrix, interpolation=None, cmap='viridis')
