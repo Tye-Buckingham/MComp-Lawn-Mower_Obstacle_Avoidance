@@ -83,7 +83,7 @@
   
 # State Diagrams
 
-*Work in progress* - states are split to make them more readable and easier to understand
+*Work in progress* - states are split to make them more readable and easier to understand (links only work when viewing raw image in browser)
 
   * Main State - four main states, moving to point, avoiding obstacles, A* path, and back on track.
   
