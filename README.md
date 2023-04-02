@@ -79,6 +79,28 @@
 	  It is still possible for robot to get stuck or pass through walls, but it is less common
   * Max tries methods have different logic and so the name and return need to be changed.
   * Printing detected points as lines appears to 'forget' earlier points
+  
+  
+# State Diagrams
+
+*Work in progress* - states are split to make them more readable and easier to understand
+
+  * Main State - four main states, moving to point, avoiding obstacles, A* path, and back on track.
+  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/main.svg)
+  
+  * A* Path State - Similar to main state but only initialised when the robot cannot reach a point within N amount of moves, 
+  in this state the robot does not become off course as this allows path (if not perfect) to pull the robot towards 
+  the desired point. If the robot makes no progress in this state then it skips a point, otherwise a recurisve loop of A* could occur.
+  
+   ![Testing_Obstacle_Avoidance_Animated](./Images/atrack.svg)
+   
+  * Back on Track State - Similar to main state but only initialised when the robot is off course **and not avoiding obstacles**, and has only one point. 
+  A* can be used to find a path to this point, but as this point moves as the robot moves this should not occur often. Ultimately, the back-on-track point 
+  is inaccessable and A* cannot find this point, then it is likely the robot cannot reached the original point and should therefore skip it.
+  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/btrack.svg)
+  
 
 # Current Pipeline
 
