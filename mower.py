@@ -310,7 +310,17 @@ class Robot:
                     for j in [-1, 0, 1]:
                         matrix[y + i][x + j] = -1
 
-        self.print_finder_graph(target, b, matrix)
+        per_coords = self.per_poly.exterior.coords
+        for p in range(-1, len(per_coords) - 1):
+            line = LineString([per_coords[p], per_coords[p + 1]])
+            dist = Point(line.coords[0]).distance(Point(line.coords[1]))
+            for i in range(int(dist + 1) * 30):
+                point = line.interpolate(i / 30)
+                x = int(shift_float(point.x) - shift_float(b[0]))
+                y = int(shift_float(point.y) - shift_float(b[1]))
+                matrix[y][x] = -1
+
+        # self.print_finder_graph(target, b, matrix)
         grid = Grid(matrix=matrix)
         start = grid.node(int(shift_float(self.x) - shift_float(b[0])),
                           int(shift_float(self.y) - shift_float(b[1])))
@@ -323,13 +333,13 @@ class Robot:
         path, runs = finder.find_path(start, end, grid)
         apath = [[self.x, self.y]]
         for p in path:
-            matrix[p.y][p.x] = 2
+            matrix[p[1]][p[0]] = 2
             # Points need shifting back to original UTM scale
             apath.append([
-                shift_int(p.x + shift_float(b[0])),
-                shift_int(p.y + shift_float(b[1]))
+                shift_int(p[0] + shift_float(b[0])),
+                shift_int(p[1] + shift_float(b[1]))
             ])
-        self.print_finder_graph(target, b, matrix)
+        # self.print_finder_graph(target, b, matrix)
         # apath = self.clean_apath(path, b)
         return len(apath) > 1, apath
 
