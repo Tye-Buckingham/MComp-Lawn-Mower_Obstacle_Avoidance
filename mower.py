@@ -6,6 +6,7 @@ Note: The LiDAR values do not have to be the maximum values of the sensor
 used, a subset can be considered i.e. one can consider only the front section
 when using a 360 LiDAR.
 """
+import sys
 import time
 
 import matplotlib.pyplot as plt
@@ -181,6 +182,58 @@ class Robot:
         plt.imshow(matrix, interpolation=None, cmap='viridis')
         plt.show()
 
+    def order_line(self, line):
+        """Takes a LineString and orders the given points from the
+        starting boundary.
+
+        Ordering the line is needed to reduce the number of points to
+        the resolution needed for the A* grid. Only points which are
+        considered one object (less than a given distance away) are
+        kept as one line, points which are too far away are added to
+        'skipped', the process is repeated for these skipped points
+        until are all in a given line.
+
+        Args:
+            line: The LineString needing to be sorted and segmented.
+
+        Returns:
+            If no points are found None is returned, this needs to be
+            checked as not all points are necessarily part of a line.
+        """
+        ordered_line = [Point(line.boundary.geoms[0])]
+        skipped = []
+        coords_len = len(line.coords)
+        next_point = None
+        while (len(ordered_line) + len(skipped)) < coords_len:
+            dist = sys.float_info.max
+            for i in line.coords:
+                # If already added, ignore
+                if Point(i) == ordered_line[len(ordered_line) -
+                                            1] or Point(i) in ordered_line:
+                    continue
+                # If already skipped, ignore
+                if Point(i) in skipped:
+                    continue
+                # If too far away to be one object, add to skipped
+                if ordered_line[len(ordered_line) - 1].distance(
+                        Point(i)) > self.obj_gap:
+                    skipped.append(Point(i))
+                    continue
+                # If close enough, consider
+                if ordered_line[len(ordered_line) - 1].distance(
+                        Point(i)) < dist:
+                    dist = ordered_line[len(ordered_line) - 1].distance(
+                        Point(i))
+                    next_point = Point(i)
+            # If no points were found to be close enough
+            if next_point is None:
+                break
+            # Add the closest point to the previously added point
+            ordered_line.append(next_point)
+        if len(ordered_line) < 2:
+            return None, skipped
+        return LineString(ordered_line), skipped
+
     def detected_points_to_lines(self):
         """Reduce the detected points to simpler linestrings.
 
@@ -190,77 +243,63 @@ class Robot:
         processing time.
         """
         lines = []
-        len_d = 0
         self.detected_points = list(set(self.detected_points))
-        for i in self.detected_ends:
-            self.detected_points.append(i.p1)
-            self.detected_points.append(i.p2)
-        while len_d < len(self.detected_points) - 1:
-            line = [self.detected_points[len_d]]
-            while utm_dist(
-                [self.detected_points[len_d].x, self.detected_points[len_d].y],
-                [
-                    self.detected_points[len_d + 1].x,
-                    self.detected_points[len_d + 1].y
-                ]) < self.obj_gap and len_d < len(self.detected_points) - 2:
-                line.append(list(self.detected_points)[len_d + 1])
-                len_d += 1
-            if len(line) >= 2:
-                lines.append(LineString(line))
-            len_d += 1
-        return lines
-
-    def reduce_detected_points(self):
-        """Reduce all points on the same line down the only the end
-        points.
-
-        This is done to reduce memory and processing time. Inner
-        points are still needed for the A* grid but that function
-        shouldn't need to be run very often.
-        """
-        lines = self.detected_points_to_lines()
-        for line in lines:
-            self.detected_ends.append(
-                Ends(Point([line.coords[0][0], line.coords[0][1]]),
-                     Point([line.coords[-1][0], line.coords[-1][1]])))
-        new_lines = []
-        added_ends = set()
-        for i in self.detected_ends:
-            if i.p1 in added_ends or i.p2 in added_ends:
+        # List is kept to keep track of added points
+        added = []
+        for i in self.detected_points:
+            if i in added:
                 continue
-            merge_points = [i.p1, i.p2]
-            for j in self.detected_ends:
-                if i == j:
-                    continue
-                if i.is_same_line(j):
-                    if j.p1 not in added_ends:
-                        merge_points.append(j.p1)
-                        added_ends.add(j.p1)
-                    if j.p2 not in added_ends:
-                        merge_points.append(j.p2)
-                        added_ends.add(j.p2)
-            if len(new_lines) > 2:
-                new_lines.append(LineString(merge_points))
+            line = Point(i)
+            while True:
+                # If a new point is added to line then reset loop
+                reset = False
+                for j in self.detected_points:
+                    if j in added or i == j:
+                        continue
+                    if line.distance(j) < self.obj_gap:
+                        x, y = line.coords.xy
+                        c = list(map(Point, zip(x, y)))
+                        c.append(j)
+                        line = LineString(c)
+                        added.append(j)
+                        reset = True
+                if not reset:
+                    break
+            if type(line) == LineString and len(line.coords) >= 2:
+                # Get the ordered line and the remaining points
+                # not part of said line
+                line, remainder = self.order_line(line)
+                # 0.1 is used as this is the resolution of the A* grid
+                dists = np.arange(0, line.length, 0.1)
+                points = [line.interpolate(d)
+                          for d in dists] + [line.boundary.geoms[1]]
+                lines.append(LineString(points))
+                # Repeat for remainder
+                # TODO find a more succinct way to do this without initial step
+                # followed by a loop
+                while len(remainder) > 1:
+                    line, remainder = self.order_line(LineString(remainder))
+                    if line is None:
+                        break
+                    dists = np.arange(0, line.length, 0.1)
+                    points = [line.interpolate(d)
+                              for d in dists] + [line.boundary.geoms[1]]
+                    lines.append(LineString(points))
 
-        new_lines = list(set(new_lines))
-        for line in new_lines:
-            p1 = Point([line.coords[0][0], line.coords[0][1]])
-            p2 = Point([line.coords[-1][0], line.coords[-1][1]])
-            self.detected_ends.append(Ends(p1, p2))
-
-        # self.detected_points = []
+        return lines
 
     def clean_apath(self, path, b):
         """Takes an A* path and removes any points that violates a
         known boundary.
         """
+        # TODO do we need this anymore?
         apath = []
         lines = self.detected_points_to_lines()
         for p in path:
             # Points need shifting back to original UTM scale
             apath.append([
-                shift_int(p[0] + shift_float(b[0])),
-                shift_int(p[1] + shift_float(b[1]))
+                shift_int(p.x + shift_float(b[0])),
+                shift_int(p.y + shift_float(b[1]))
             ])
         checked_apath = [[self.x, self.y]]
         # Check if the route violates the detected boundaries
@@ -281,6 +320,7 @@ class Robot:
                 break
 
         print(checked_apath)
+        # Reduce the path size to save time
         for i in range(2):
             if len(checked_apath) > 2:
                 del checked_apath[2 - 1::2]
@@ -292,33 +332,42 @@ class Robot:
         no path can be generated then the point is unreachable and
         shall be skipped.
         """
+
+        # TODO reduce size of method
         b = self.per_poly.bounds  # minx, miny, maxx, maxy
         # d = printable_detected_ends(self.detected_points)
         d = self.detected_points_to_lines()
 
+        # Build matrix with min-max values
         m_x = int(shift_float(b[2]) - shift_float(b[0])) + 1
         m_y = int(shift_float(b[3]) - shift_float(b[1])) + 1
         matrix = [[1] * max(m_x, m_y)] * max(m_y, m_x)
         matrix = np.array(matrix)
-        print(len(d))
 
+        # Add all points on the reduce lines
         for line in d:
-            for point in LineString(line).coords:
+            for point in line.coords:
                 x = int(shift_float(point[0]) - shift_float(b[0]))
                 y = int(shift_float(point[1]) - shift_float(b[1]))
-                for i in [-1, 0, 1]:
-                    for j in [-1, 0, 1]:
-                        matrix[y + i][x + j] = -1
+                matrix[y][x] = -1
 
+        # Add perimeter with interpolate lines to connect
+        # TODO could we do this once at the start instead of each time?
+        # - memory vs time
         per_coords = self.per_poly.exterior.coords
         for p in range(-1, len(per_coords) - 1):
             line = LineString([per_coords[p], per_coords[p + 1]])
             dist = Point(line.coords[0]).distance(Point(line.coords[1]))
-            for i in range(int(dist + 1) * 30):
-                point = line.interpolate(i / 30)
+            for i in range(int(dist + 1) * 10):
+                point = line.interpolate(i / 10)
                 x = int(shift_float(point.x) - shift_float(b[0]))
                 y = int(shift_float(point.y) - shift_float(b[1]))
-                matrix[y][x] = -1
+                for i in [-1, 0, 1]:
+                    for j in [-1, 0, 1]:
+                        try:
+                            matrix[y + i][x + j] = -1
+                        except IndexError:
+                            pass
 
         # self.print_finder_graph(target, b, matrix)
         grid = Grid(matrix=matrix)
@@ -333,14 +382,17 @@ class Robot:
         path, runs = finder.find_path(start, end, grid)
         apath = [[self.x, self.y]]
         for p in path:
-            matrix[p[1]][p[0]] = 2
+            matrix[p.y][p.x] = 2
             # Points need shifting back to original UTM scale
             apath.append([
-                shift_int(p[0] + shift_float(b[0])),
-                shift_int(p[1] + shift_float(b[1]))
+                shift_int(p.x + shift_float(b[0])),
+                shift_int(p.y + shift_float(b[1]))
             ])
         # self.print_finder_graph(target, b, matrix)
         # apath = self.clean_apath(path, b)
+        for i in range(2):
+            if len(apath) > 2:
+                del apath[2 - 1::2]
         return len(apath) > 1, apath
 
     def lidar_lines(self):
@@ -468,7 +520,14 @@ class Robot:
             for p in points:
                 self.detected_points.append(p)
             points = self.find_nearest(points)
-            # self.reduce_detected_points()
+            self.detected_points = list(set(self.detected_points))
+            print("Detected Points: " + str(len(self.detected_points)))
+            if len(self.detected_points) > 250:
+                d = self.detected_points_to_lines()
+                self.detected_points = []
+                for line in d:
+                    for p in line.coords:
+                        self.detected_points.append(Point(p))
 
         return points
 

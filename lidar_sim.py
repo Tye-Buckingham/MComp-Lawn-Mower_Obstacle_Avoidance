@@ -30,7 +30,7 @@ lidar_range = 60  # Number of LiDAR points (lasers) to generate
 lidar_dist = 1  # Distance of LiDAR in front of robot in metres
 move_dist = 0.3  # Distance to move per turn in metres
 lidar_width = 15  # The angle from the centre to the left and right most LiDAR points
-obj_gap = 0.1  # Minimum distance before two objects are considered seperate
+obj_gap = 0.5  # Minimum distance before two objects are considered seperate
 try_count = 5  # Maximum number of movement tries before the robot may be considered stuck
 Q_SIZE = 10  # Queue used for off course determining
 MAX_SPEED = 0.6
@@ -103,10 +103,13 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(*centre_line.xy)
     # for p in random.sample(mower.detected_ends,
     #                        min(50, len(mower.detected_ends))):
-    print_ends = printable_detected_ends(list(set(mower.detected_points)))
+    print_ends = mower.detected_points_to_lines()
+    # printable_detected_ends(list(set(mower.detected_points)))
     print("Printing " + str(len(print_ends)) + " detected ends")
     for p in print_ends:
-        plt.plot(np.array(p)[:, 0], np.array(p)[:, 1], color='red')
+        # plt.plot(np.array(p)[:, 0], np.array(p)[:, 1], color='red')
+        print("Printing : " + str(len(p.coords)) + " coords")
+        plt.plot(*p.coords.xy, color='red')
 
     if mower.is_off_course():
         mower_colour = 'red'
