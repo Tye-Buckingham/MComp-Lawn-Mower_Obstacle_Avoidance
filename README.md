@@ -56,6 +56,7 @@
   * 12/03/2023: Instead of N amount of tries, A* is used when the robot makes minimal progress within N amount of moves.
   * 15/03/2023: Fixed issue with A* not providing a correct path
       * Testing more *realistic* values based on RTK inaccuracy and LiDAR ranges
+  * 04/04/2023: Added method to reduce number of detected points to minimal set required for A*. Method needs more testing, but appears stable.
 
  
 # TODO 
@@ -65,20 +66,18 @@
   * [x] Stop the robot seeing through walls
   * [x] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
   * [x] Combine with route mapping - if off course and no obstacles, move back to route.
-  * [ ] Move robot to end of detected end point
+  * [ ] ~~Move robot to end of detected end point~~
   * [x] Test scenes with randomly generated nogos
-  * [ ] Reduce number of detected points to minimal set
+  * [x] Reduce number of detected points to minimal set
+  * [ ] Consider dimensions of robot - not just centroid
+  * [ ] More user friendly input, options, and output
+  * [ ] User guide
+  * [ ] Full documentation of methods
   
 # Known Issues
 
-  * If the robot gets too close to an obstacle there are some issues with detecting points, this is thought to be because:
-      * The 'LiDAR' comes from a single points but a real sensor would have some width
-      * A real LiDAR would not need functions to find points and remove points behind walls
-	  This may be fixed by changing the movement distance and bearing to keep some distance between the obstacle and the robot.
-      * Currently a check has been added to determine if an object is too close or if movement results in moving within an object to adjust movement accordingly
-	  It is still possible for robot to get stuck or pass through walls, but it is less common
   * Max tries methods have different logic and so the name and return need to be changed.
-  * Printing detected points as lines appears to 'forget' earlier points
+  * Some methods have grown too large and less succinct, some refactoring is needed.
   
   
 # State Diagrams
