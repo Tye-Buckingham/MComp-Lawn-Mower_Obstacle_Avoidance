@@ -382,7 +382,7 @@ class Robot:
         path, runs = finder.find_path(start, end, grid)
         apath = [[self.x, self.y]]
         for p in path:
-            if isinstance(p) is tuple:
+            if isinstance(p, tuple):
                 matrix[p[1]][p[0]] = 2
                 # Points need shifting back to original UTM scale
                 apath.append([
