@@ -72,7 +72,7 @@
   * [ ] Consider dimensions of robot - not just centroid
   * [ ] More user friendly input, options, and output
   * [ ] User guide
-  * [ ] Full documentation of methods
+  * [x] Full documentation of methods
   
 # Known Issues
 

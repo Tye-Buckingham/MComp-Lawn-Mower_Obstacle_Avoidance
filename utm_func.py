@@ -9,7 +9,6 @@ import math
 import numpy as np
 import utm
 from shapely.geometry import LineString, Point, Polygon
-
 from surveytoolbox.bdc import bearing_distance_from_coordinates
 from surveytoolbox.cbd import coordinates_from_bearing_distance
 from surveytoolbox.config import EASTING, ELEVATION, NORTHING

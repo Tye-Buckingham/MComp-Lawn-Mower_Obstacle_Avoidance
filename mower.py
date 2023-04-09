@@ -382,12 +382,21 @@ class Robot:
         path, runs = finder.find_path(start, end, grid)
         apath = [[self.x, self.y]]
         for p in path:
-            matrix[p.y][p.x] = 2
-            # Points need shifting back to original UTM scale
-            apath.append([
-                shift_int(p.x + shift_float(b[0])),
-                shift_int(p.y + shift_float(b[1]))
-            ])
+            if isinstance(p) is tuple:
+                matrix[p[1]][p[0]] = 2
+                # Points need shifting back to original UTM scale
+                apath.append([
+                    shift_int(p[0] + shift_float(b[0])),
+                    shift_int(p[1] + shift_float(b[1]))
+                ])
+            else:
+                matrix[p.y][p.x] = 2
+                # Points need shifting back to original UTM scale
+                apath.append([
+                    shift_int(p.x + shift_float(b[0])),
+                    shift_int(p.y + shift_float(b[1]))
+                ])
+
         # self.print_finder_graph(target, b, matrix)
         # apath = self.clean_apath(path, b)
         for i in range(2):
@@ -522,7 +531,7 @@ class Robot:
             points = self.find_nearest(points)
             self.detected_points = list(set(self.detected_points))
             print("Detected Points: " + str(len(self.detected_points)))
-            if len(self.detected_points) > 250:
+            if len(self.detected_points) > 500:
                 d = self.detected_points_to_lines()
                 self.detected_points = []
                 for line in d:
