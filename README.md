@@ -22,63 +22,24 @@
 	and test said methods to determine efficiency 
 	and find issues before implementing on the 
 	robot designed for this MCOMP project.
- 
-# Changelog 
-
-	Some updates do not come with a changelog update or 
-	descriptive commit, this is due to the repo being a 
-	place to test, develop, and keep backups of this work. 
-	Only major changes which are considered to be long 
-	term or substantial will be described in this section.
-	This repo is primarily for learning, testing, and 
-	theoretical development, it is not necessarily 
-	intended to be used in actual projects, 
-	but it is hoped that this repo can at least help 
-	those understand and visualise methods required for 
-	path traversal and obstacle detection.
 	
 	
-  * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
-      * Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
-  * 18/02/2023: Tested on coverage map generated without known obstacles.
-  * 08/03/2023: Integrated the route traversal methods from the `Mapping` repo
-      * Fixed incorrect back-on-track point
-      * Removed section instructing robot to move within the line detection method
-  * 09/03/2023: Fixed doubling back if off course. 
-      * If the robot becomes 'off-course' but an obstacle is between it and the ideal path then it continues as normal until past the obstacle
-  * 10/03/2023: Fixed issues with robot seeing through walls
-      * Added method to prevent movement that results in moving through walls
-      * Changed logic for determining which direction to move when an object is found
-  * 11/03/2023: Added methods to produce randomly generated nogos within scene, output the shapes, and output coverage, total distance, and number of points skipped
-      * Now the robot has N number of tries (relating to distance from origin) to reach a point, if this fails then A* is used along with the robot's
-	  knowledge of the scene from detecting points to determine if the point is accessible or not. **Needs more testing**
-          * If the point is determined inaccessible then the robot will skip this checkpoint.
-  * 12/03/2023: Instead of N amount of tries, A* is used when the robot makes minimal progress within N amount of moves.
-  * 15/03/2023: Fixed issue with A* not providing a correct path
-      * Testing more *realistic* values based on RTK inaccuracy and LiDAR ranges
-  * 04/04/2023: Added method to reduce number of detected points to minimal set required for A*. Method needs more testing, but appears stable.
+# Usage
 
+  1. Place a `perimeter.out` file in the root directory. This file contains the perimeter points in a format of *x,y\n*.
+  2. Repeat step 1 for any nogo zones, naming them `obstacle_0.out`, `obstacle_1.out`, ... etc.
+  3. Run `lidar_sim.py` with the desired cmd args {-p, -t [some number], -v, -r, -s}.
+  4. The program will run, outputting to stdout if using -v, and saving images after each movement if using -p.
+  5. Images will be saved in the 'Imgs' folder.
+  6. Tests run with -t will output the obstacles to the 'Tests' folder.
+  
+  ![Testing_Obstacle_Avoidance_Animated](./Images/dir_example.png)
  
-# TODO 
-
-  * [x] Handle multiple objects
-      * Both close together and far apart (allowing movement between)
-  * [x] Stop the robot seeing through walls
-  * [x] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
-  * [x] Combine with route mapping - if off course and no obstacles, move back to route.
-  * [ ] ~~Move robot to end of detected end point~~
-  * [x] Test scenes with randomly generated nogos
-  * [x] Reduce number of detected points to minimal set
-  * [ ] Consider dimensions of robot - not just centroid
-  * [ ] More user friendly input, options, and output
-  * [ ] User guide
-  * [x] Full documentation of methods
   
 # Known Issues
 
   * Max tries methods have different logic and so the name and return need to be changed.
   * Some methods have grown too large and less succinct, some refactoring is needed.
-  
   
 # State Diagrams
 
@@ -170,8 +131,8 @@
   * A* is used to find a new path dependant on the known boundaries, when to ignore this route and skip to 
 	the next checkpoint - deciding between coverage and time to find next point.
 
-# Progress
 
+# Progress
 	
 ![Testing_Obstacle_Avoidance_Animated](./Images/Target_Focused_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Endpoint_Focused_SM.gif)
@@ -181,6 +142,58 @@
 ![Testing_Obstacle_Avoidance_Animated](./Images/Coverage_No_Mapping_Unknown_Obstacles_SM.gif)
 ![Testing_Obstacle_Avoidance_Animated](./Images/Integrated_MapMatching_SM.gif.gif)
 
+
+# Changelog 
+
+	Some updates do not come with a changelog update or 
+	descriptive commit, this is due to the repo being a 
+	place to test, develop, and keep backups of this work. 
+	Only major changes which are considered to be long 
+	term or substantial will be described in this section.
+	This repo is primarily for learning, testing, and 
+	theoretical development, it is not necessarily 
+	intended to be used in actual projects, 
+	but it is hoped that this repo can at least help 
+	those understand and visualise methods required for 
+	path traversal and obstacle detection.
+	
+	
+  * 17/02/2023: Added methods to stop the robot seeing through obstacles. The method is more relatively exhaustive but wouldn't be needed in real-life.
+      * Testing with a smaller LiDAR range. Fixed getting stuck on a wall. Allowing for more direct travel.
+  * 18/02/2023: Tested on coverage map generated without known obstacles.
+  * 08/03/2023: Integrated the route traversal methods from the `Mapping` repo
+      * Fixed incorrect back-on-track point
+      * Removed section instructing robot to move within the line detection method
+  * 09/03/2023: Fixed doubling back if off course. 
+      * If the robot becomes 'off-course' but an obstacle is between it and the ideal path then it continues as normal until past the obstacle
+  * 10/03/2023: Fixed issues with robot seeing through walls
+      * Added method to prevent movement that results in moving through walls
+      * Changed logic for determining which direction to move when an object is found
+  * 11/03/2023: Added methods to produce randomly generated nogos within scene, output the shapes, and output coverage, total distance, and number of points skipped
+      * Now the robot has N number of tries (relating to distance from origin) to reach a point, if this fails then A* is used along with the robot's
+	  knowledge of the scene from detecting points to determine if the point is accessible or not. **Needs more testing**
+          * If the point is determined inaccessible then the robot will skip this checkpoint.
+  * 12/03/2023: Instead of N amount of tries, A* is used when the robot makes minimal progress within N amount of moves.
+  * 15/03/2023: Fixed issue with A* not providing a correct path
+      * Testing more *realistic* values based on RTK inaccuracy and LiDAR ranges
+  * 04/04/2023: Added method to reduce number of detected points to minimal set required for A*. Method needs more testing, but appears stable.
+
+ 
+# TODO 
+
+  * [x] Handle multiple objects
+      * Both close together and far apart (allowing movement between)
+  * [x] Stop the robot seeing through walls
+  * [x] Handle case if point is inaccessible due to an obstacle covering, surrounding or blocking
+  * [x] Combine with route mapping - if off course and no obstacles, move back to route.
+  * [ ] ~~Move robot to end of detected end point~~
+  * [x] Test scenes with randomly generated nogos
+  * [x] Reduce number of detected points to minimal set
+  * [ ] Consider dimensions of robot - not just centroid
+  * [ ] More user friendly input, options, and output
+  * [ ] User guide
+  * [x] Full documentation of methods
+  
 
 # References
 
