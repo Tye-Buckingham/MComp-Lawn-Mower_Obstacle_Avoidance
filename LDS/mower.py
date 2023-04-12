@@ -11,13 +11,14 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+from pathfinding.core.diagonal_movement import DiagonalMovement
+from pathfinding.core.grid import Grid
+from pathfinding.finder.a_star import AStarFinder
 from shapely.geometry import LineString, Point, Polygon
 
 from consts import *
 from ends import Ends
-from pathfinding.core.diagonal_movement import DiagonalMovement
-from pathfinding.core.grid import Grid
-from pathfinding.finder.a_star import AStarFinder
+from lds import LFCDLaser
 from utm_func import utm_bearing, utm_bearing_dist, utm_coords, utm_dist
 
 DETECTED_POINTS_MULTIPLIER = 1
@@ -54,6 +55,7 @@ class Robot:
         self.obj_gap = obj_gap
         self.REAL_TIME = REAL_TIME
         self.DIRECT = DIRECT
+        self.lidar = LFCDLaser("/dev/ttyUSB0", 230400)  # lds lidar driver
 
     # Route traversal functions start
     def enqueue(self, val):
@@ -508,32 +510,26 @@ class Robot:
         Returns:
             All objects within range of the robot.
         """
-        points = []
-        lidar_lines = self.lidar_lines()[0]
-        for nogo in nogos[0]:  # For each object
-            for i in range(-1, len(nogo) - 1):  # Loop over each corner
-                # Create a solid edge to the object
-                edge = LineString([(nogo[i][0], nogo[i][1]),
-                                   (nogo[i + 1][0], nogo[i + 1][1])])
-                for line in lidar_lines:
-                    if line.intersects(edge):
-                        # If the target is infront of the end don't consider it
-                        if utm_dist([self.x, self.y], [
-                                line.intersection(edge).x,
-                                line.intersection(edge).y,
-                        ]) > utm_dist([self.x, self.y], target):
-                            continue
-                        # If the distance is far away don't consider
-                        if utm_dist([self.x, self.y], [
-                                line.intersection(edge).x,
-                                line.intersection(edge).y,
-                        ]) > self.lidar_dist:
-                            continue
-                        points.append(line.intersection(edge))
+        # The interface with the LiDAR system has been stitched together.
+        # This is not the most efficient way, re-writing lidar_intersecting
+        # to use lds[0] (it's relative angle) instead of points and
+        # intersections would be a better idea
 
+        lds_points = self.lidar.poll()  # Get points from LiDAR over serial
+        points = []
+        for lds in lds_points:
+            if lds[1] > self.lidar_dist:  # if too far to consider
+                continue
+            if lds[1] > utm_dist([self.x, self.y], target):  # if behind target
+                continue
+            if lds[1] == 0:  # if no object detected
+                continue
+            if lds[0] < 15 or lds[0] > 345:  # if in-front
+                coord = utm_coords([self.x, self.y], self.heading + lds[0],
+                                   lds[1])
+                points.append(Point([coord['e'], coord['n']]))
         # Once all relevant points are found, determine which to handle first
         if len(points) > 0:
-            points = self.remove_hidden(points)
             for p in points:
                 self.detected_points.append(p)
             points = self.find_nearest(points)
@@ -551,7 +547,6 @@ class Robot:
                     if len(self.detected_points) > (
                             500 * DETECTED_POINTS_MULTIPLIER) * 0.5:
                         DETECTED_POINTS_MULTIPLIER += 1
-
         return points
 
     def closer_point(self, p1, p2):
