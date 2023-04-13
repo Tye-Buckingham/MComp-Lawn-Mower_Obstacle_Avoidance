@@ -5,3 +5,4 @@ flycheck_lidar_sim.py
 .gitattributes
 *.out
 *.pyc
+ROS/.\#mower.py
