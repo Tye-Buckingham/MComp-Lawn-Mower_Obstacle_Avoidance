@@ -84,8 +84,8 @@ def perpen_point(p, a, b):
     return np.array([x4, y4])
 
 
-def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
-              right_bear, left_bear, centre_bear):
+def avoidance(mower, path, target, virtual_bounds, centre_line, test_shape,
+              current, right_bear, left_bear, centre_bear):
     """
 
     The main driver function to avoid obstacles.
@@ -94,7 +94,7 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
         mower: The lawn mower object.
         path: The traversal route.
         target: The current target within the route.
-        nogos: The list of nogo-zones in the scene.
+        virtual_bounds: The list of virtual_bound-zones in the scene.
         centre_line: The centre line of the robot's LiDAR.
         test_shape: The outer perimeter of the scene.
         current: The current (previous target) within the route.
@@ -106,7 +106,7 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
     """
     while utm_dist([mower.x, mower.y], path[target]) > 0.2:
         m = 0
-        detected_line, img = mower.get_detected_line(target, nogos, 0,
+        detected_line, img = mower.get_detected_line(target, virtual_bounds, 0,
                                                      centre_line, test_shape,
                                                      current, img, path)
         # If detected objects iteratively look for new direction until none
@@ -128,8 +128,8 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
                     line = centre_lines
 
                 detected_line, img = mower.get_detected_line(
-                    target, nogos, bear[m], line, test_shape, current, img,
-                    path)
+                    target, virtual_bounds, bear[m], line, test_shape, current,
+                    img, path)
 
                 # Once no obstacles are found, break to move foward
                 if detected_line is None:
@@ -189,21 +189,21 @@ def main(args=None):
 
     # Read virtual boundaries
     # TODO ::
-    # - rename nogos to virtual boundaries
+    # - rename virtual_bounds to virtual boundaries
     # - do we need to read files?
-    nogos = []
+    virtual_bounds = []
 
-    nogo_files = sorted(list(glob.glob("obstacle*")))
-    for i in nogo_files:
-        nogos.append(np.loadtxt(i, dtype=float, delimiter=","))
-    for i in range(len(nogos)):
-        nogos[i] = to_utm(nogos[i])
-    for n in range(len(nogos)):
-        if len(nogos[n]) > 2:
-            mower.nogo_polys.append(Polygon(nogos[n]))
+    virtual_bound_files = sorted(list(glob.glob("obstacle*")))
+    for i in virtual_bound_files:
+        virtual_bounds.append(np.loadtxt(i, dtype=float, delimiter=","))
+    for i in range(len(virtual_bounds)):
+        virtual_bounds[i] = to_utm(virtual_bounds[i])
+    for n in range(len(virtual_bounds)):
+        if len(virtual_bounds[n]) > 2:
+            mower.virtual_bound_polys.append(Polygon(virtual_bounds[n]))
         else:
-            mower.nogo_polys.append(LineString(nogos[n]))
-    nogos.append(test_shape)  # Add perimeter as virtual boundary
+            mower.virtual_bound_polys.append(LineString(virtual_bounds[n]))
+    virtual_bounds.append(test_shape)  # Add perimeter as virtual boundary
     # Setup pub/subs for ROS
     rtk_sub = mower.rtk_sub
     imu_sub = mower.imu_sub
@@ -252,9 +252,10 @@ def main(args=None):
                     # A* paths are not always possible given it relies on the
                     # robot's knowledge of the scene
                     try:
-                        img = avoidance(mower, np.array(apath), atarget, nogos,
-                                        centre_line, test_shape, acurrent, img,
-                                        right_bear, left_bear, centre_bear)
+                        img = avoidance(mower, np.array(apath), atarget,
+                                        virtual_bounds, centre_line,
+                                        test_shape, acurrent, img, right_bear,
+                                        left_bear, centre_bear)
                         print("Reached A* target " + str(acurrent) +
                               " out of " + str(len(apath)))
                     except (NoTurns, NoPath) as e:
@@ -282,8 +283,8 @@ def main(args=None):
                 p = np.array([p[0] + (-0.1) * dx, p[1] + (-0.1) * dy])
             # Check if object is between mower and desired route
             detected_line, img = mower.get_detected_line(
-                OFF_COURSE_TARGET, nogos, 0, centre_line, test_shape, current,
-                img, np.array([path[current], path[target], p]))
+                OFF_COURSE_TARGET, virtual_bounds, 0, centre_line, test_shape,
+                current, img, np.array([path[current], path[target], p]))
             # If mower is avoiding obstacles - acceptable to be off course
             if detected_line is not None:
                 mower.clear_q()
@@ -291,9 +292,9 @@ def main(args=None):
             try:
                 img = avoidance(mower,
                                 np.array([path[current], path[target],
-                                          p]), OFF_COURSE_TARGET, nogos,
-                                centre_line, test_shape, 0, img, right_bear,
-                                left_bear, centre_bear)
+                                          p]), OFF_COURSE_TARGET,
+                                virtual_bounds, centre_line, test_shape, 0,
+                                img, right_bear, left_bear, centre_bear)
             except (NoTurns, NoPath) as e:
                 current += 1
                 target += 1
@@ -303,9 +304,9 @@ def main(args=None):
                 print("Couldn't reach target")
         else:
             try:
-                img = avoidance(mower, path, target, nogos, centre_line,
-                                test_shape, current, img, right_bear,
-                                left_bear, centre_bear)
+                img = avoidance(mower, path, target, virtual_bounds,
+                                centre_line, test_shape, current, img,
+                                right_bear, left_bear, centre_bear)
             except (NoTurns, NoPath) as e:
                 current += 1
                 target += 1
@@ -319,7 +320,7 @@ def main(args=None):
     print("Total area: " + str(Polygon(test_shape).area) + " m^2")
     print("Total area covered: " + str(s.buffer(0.15)[0].area) + " m^2")
     missed = 0
-    for n in mower.nogo_polys:
+    for n in mower.virtual_bound_polys:
         missed += n.area
     print("Total area inside no-go: " + str(missed) + " m^2")
     print("Total distance travelled: " + str(mower.dist_travelled) + " m")
