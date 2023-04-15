@@ -9,6 +9,11 @@ when using a 360 LiDAR.
 import sys
 import time
 
+import rclpy
+from rclpy.node import Node
+
+from std_msgs.msg import String
+
 import numpy as np
 import rclpy
 from pathfinding.core.diagonal_movement import DiagonalMovement
@@ -18,14 +23,55 @@ from rclpy.node import Node
 from shapely.geometry import LineString, Point, Polygon
 from std_msgs.msg import String
 
-from consts import *
-from ends import Ends
-from lds import LFCDLaser
-from utm_func import utm_bearing, utm_bearing_dist, utm_coords, utm_dist
+from .consts import *
+from .ends import Ends
+from .lds import LFCDLaser
+from .utm_func import utm_bearing, utm_bearing_dist, utm_coords, utm_dist
 
 DETECTED_POINTS_MULTIPLIER = 1
 
 
+class MovePub(Node):
+    def __init__(self):
+        self.cmd_index = 0
+        super().__init__('mower_pub')
+        self.publisher_ = self.create_publisher(RobotSendCMD, 'Robot_Bridge_CMD', 10)
+        self.publisher_
+
+    def publish_move(self, heading, distance):
+        cmd_msg = RobotSendCMD()
+        cmd_msg.cmd_char = ord('d')
+        cmd_msg.arg1 = 1500.0 # RPM should be based on time to move 10cm to allow enough time to process 
+        cmd_msg.arg2 = 0.1 # 10 cm
+        self.publisher_.publish(cmd_msg)
+        self.get_logger().info("Sent CMD message: %s" % cmd_msg)
+
+
+
+class RTKSub(Node):
+
+    def __init__(self, mower):
+        super().__init__('rtk_sub')
+        self.subscription = self.create_subscription(String, 'topic', self.listener_callback, 1)
+        self.subscription
+        self.assigned = mower
+
+    def listener_callback(self, msg):
+        self.get_logger().info('I heard: %s' % msg.data)
+
+
+class IMUSub(Node):
+
+    def __init__(self, mower):
+        super().__init__('imu_sub')
+        self.subscription = self.create_subscription(String, 'topic', self.listener_callback, 1)
+        self.subscription
+        self.assigned = mower
+
+    def listener_callback(self, msg):
+        self.get_logger().info('I heard: %s' % msg.data)
+
+        
 class Robot():
     """The Robot class is the simulated version of a lawn mower
     used for testing obstacle detection, mapping, and
@@ -33,10 +79,14 @@ class Robot():
     """
 
     def __init__(self, x, y, target, Q_SIZE, lidar_range, lidar_width,
-                 lidar_dist, move_dist, try_count, obj_gap, REAL_TIME, DIRECT):
+                 lidar_dist, move_dist, try_count, obj_gap, REAL_TIME):
         # Considerable number of members for testing -
         # may not need all in future versions
-        self.x = x  # TODO ROS subscriber to RTK to get [x, y]
+        rclpy.init(args=None)
+        self.move_pub = MovePub()
+        self.imu_sub = IMUSub(self)
+        self.rtk_sub = RTKSub(self)
+        self.x = x  # TODO ROS subscriber to RTK to get [x, y] 
         self.y = y
         self.visited = np.empty((0, 2))
         self.heading = float()
@@ -56,9 +106,8 @@ class Robot():
         self.try_count = try_count
         self.obj_gap = obj_gap
         self.REAL_TIME = REAL_TIME
-        self.DIRECT = DIRECT
         self.lidar = LFCDLaser("/dev/ttyUSB0", 230400)  # lds lidar driver
-
+        
     # Route traversal functions start
     def enqueue(self, val):
         """Keep track of the n amount of on-course and off-course
@@ -277,7 +326,7 @@ class Robot():
         """
 
         b = self.per_poly.bounds  # minx, miny, maxx, maxy
-
+        
         # Build matrix with min-max values
         m_x = int(shift_float(b[2]) - shift_float(b[0])) + 1
         m_y = int(shift_float(b[3]) - shift_float(b[1])) + 1
@@ -297,11 +346,15 @@ class Robot():
                 x = int(shift_float(point.x) - shift_float(b[0]))
                 y = int(shift_float(point.y) - shift_float(b[1]))
                 matrix[y][x] = -1
-
+                
         # Add perimeter with interpolate lines to connect
         # TODO could we do this once at the start instead of each time?
         # - memory vs time
+        virtual_bounds = []
         per_coords = self.per_poly.exterior.coords
+        virtual_bounds.append(per_coords)
+        for n in self.nogo_polys:
+            virtual_bounds.append(n.exterior.coords)
         for p in range(-1, len(per_coords) - 1):
             line = LineString([per_coords[p], per_coords[p + 1]])
             dist = Point(line.coords[0]).distance(Point(line.coords[1]))
@@ -433,6 +486,54 @@ class Robot():
 
         return new_points
 
+
+    def detect_virtual_boundaries(self, nogos, target):
+        """Detect if virtual boundary is within range of robot
+        
+        This method does require the objects to be 'known' but will
+        only return those visible to the robot.
+        
+        Args:
+            nogos: The list of nogos in the scene, and the perimeter
+            target: The robot's current coordinate target, typically
+                the next in the given route.
+        
+        Returns:
+            All objects within range of the robot.
+        """
+        points = []
+        lidar_lines = self.lidar_lines()[0]
+        for nogo in nogos[0]:  # For each object
+            for i in range(-1, len(nogo) - 1):  # Loop over each corner
+                # Create a solid edge to the object
+                edge = LineString([(nogo[i][0], nogo[i][1]),
+                                   (nogo[i + 1][0], nogo[i + 1][1])])
+                for line in lidar_lines:
+                    if line.intersects(edge):
+                        # If the target is infront of the end don't consider it
+                        if utm_dist([self.x, self.y], [
+                                line.intersection(edge).x,
+                                line.intersection(edge).y,
+                        ]) > utm_dist([self.x, self.y], target):
+                            continue
+                        # If the distance is far away don't consider
+                        if utm_dist([self.x, self.y], [
+                                line.intersection(edge).x,
+                                line.intersection(edge).y,
+                        ]) > self.lidar_dist:
+                            continue
+                        points.append(line.intersection(edge))
+
+        # Once all relevant points are found, determine which to handle first
+        # Points are not added to detected_points like in detect_objects
+        # as we already know these shapes
+        if len(points) > 0:
+            points = self.remove_hidden(points)
+            points = self.find_nearest(points)
+
+        return points
+
+    
     def detect_objects(self, nogos, target):
         """Find all objects within range of the robot's LiDAR.
         
@@ -451,7 +552,7 @@ class Robot():
         # This is not the most efficient way, re-writing lidar_intersecting
         # to use lds[0] (it's relative angle) instead of points and
         # intersections would be a better idea
-
+        
         lds_points = self.lidar.poll()  # Get points from LiDAR over serial
         points = []
         for lds in lds_points:
@@ -484,6 +585,7 @@ class Robot():
                     if len(self.detected_points) > (
                             500 * DETECTED_POINTS_MULTIPLIER) * 0.5:
                         DETECTED_POINTS_MULTIPLIER += 1
+        points.append(self.detect_virtual_boundaries) # Add virtual obstacles as well
         return points
 
     def closer_point(self, p1, p2):
@@ -506,9 +608,7 @@ class Robot():
                 coordinates.
         """
         # TODO : ROS publisher - send [dist, bearing] message
-        msg = String()
-        msg.data = 'Moving'
-        self.publisher_.publish(msg)
+        # self.move_pub
 
         target_loc = utm_bearing_dist([self.x, self.y], target)
         # If the heading is similar to the target
@@ -519,9 +619,10 @@ class Robot():
                 'bg'] and target_loc['dist_2d'] < self.move_dist:
             self.clear_q()
             metres = (target_loc['dist_2d'] - 0.05)
+        # Potential position
         pos = utm_coords([self.x, self.y], self.heading, metres)
         not_allowed = False
-        # Check if movement would result in passing through wall
+        # Check if movement would result in passing through virtual nogo boundary
         for n in range(len(self.nogo_polys)):
             if self.nogo_polys[n].contains(Point([pos['e'], pos['n']])):
                 not_allowed = True
@@ -530,24 +631,16 @@ class Robot():
                 not_allowed = True
             if path.crosses(self.per_poly):
                 not_allowed = True
+        # If outside perimeter
         if not self.per_poly.contains(Point([pos['e'], pos['n']])):
             not_allowed = True
         # If so move away from the object
         if not_allowed:
             pos = utm_coords([self.x, self.y], self.heading, -0.15)
             self.dist_travelled += 0.15
-            if self.REAL_TIME:
-                time.sleep(0.15 / 0.89)
-        else:
-            self.dist_travelled += metres
-            if self.REAL_TIME:
-                time.sleep(abs(metres) / 0.89)
-
+        # Send move command and update position using RTK ROS node    
         self.x = pos['e']
         self.y = pos['n']
-        if self.REAL_TIME:
-            self.x += np.random.normal(-0.02, 0.02)
-            self.y += np.random.normal(-0.02, 0.02)
         self.tries += 1
 
     def find_target(self, nogos, target):
@@ -558,28 +651,24 @@ class Robot():
             target: The robot's current target.
         """
         target_loc = utm_bearing([self.x, self.y], target)
-        # Look at target and iteratively turn until not objects in the way
-        if self.DIRECT:
-            self.heading = target_loc
         # Keep current heading and turn towards target until objects in view
-        else:
-            target_heading = target_loc
-            # Temporary fix to reduce getting stuck on flat walls
-            if target_heading > 340 and self.tries >= 3:
-                target_heading = 360 - target_heading
+        target_heading = target_loc
+        # Temporary fix to reduce getting stuck on flat walls
+        if target_heading > 340 and self.tries >= 3:
+            target_heading = 360 - target_heading
+        objs = self.detect_objects([nogos], target)
+        no_target = 1
+        while len(objs) <= 0:
+            if target_heading < self.heading:
+                self.heading += (2 * no_target)
+            else:
+                self.heading -= (2 * no_target)
             objs = self.detect_objects([nogos], target)
-            no_target = 1
-            while len(objs) <= 0:
-                if target_heading < self.heading:
-                    self.heading += (2 * no_target)
-                else:
-                    self.heading -= (2 * no_target)
-                objs = self.detect_objects([nogos], target)
-                if abs(self.heading - target_heading) <= 3 and len(objs) <= 0:
-                    self.heading = target_heading
-                    break
-                else:
-                    no_target = -1
+            if abs(self.heading - target_heading) <= 3 and len(objs) <= 0:
+                self.heading = target_heading
+                break
+            else:
+                no_target = -1
 
     def get_detected_line(self, target, nogos, heading, centre_line,
                           test_shape, current, img, path):

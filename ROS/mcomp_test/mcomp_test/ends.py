@@ -4,7 +4,7 @@ import math
 import numpy as np
 from shapely.geometry import LineString
 
-from utm_func import utm_dist
+from .utm_func import utm_dist
 
 
 class Ends:

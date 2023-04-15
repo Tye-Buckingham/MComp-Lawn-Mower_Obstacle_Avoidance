@@ -8,6 +8,7 @@ The methods are primarily based on the work found in:
 Peng, Y., Qu, D., Zhong, Y., Xie, S., Luo, J., & Gu, J. (2015, August). The obstacle detection and obstacle avoidance algorithm based on 2-d lidar. In 2015 IEEE international conference on information and automation (pp. 1648-1653). IEEE.
 """
 
+import ast
 import cProfile
 import csv
 import glob
@@ -25,9 +26,9 @@ from rclpy.node import Node
 from shapely.geometry import LineString, Point, Polygon
 from std_msgs.msg import String
 
-from consts import *
-from mower import Robot
-from utm_func import to_utm, utm_dist
+from .consts import *
+from .mower import Robot
+from .utm_func import to_utm, utm_dist
 
 lidar_range = 30  # Number of LiDAR points (lasers) to generate
 lidar_dist = 1  # Distance of LiDAR in front of robot in metres
@@ -38,6 +39,7 @@ try_count = 5  # Maximum number of movement tries before the robot may be consid
 Q_SIZE = 10  # Queue used for off course determining
 MAX_SPEED = 0.6
 OFF_COURSE_TARGET = -1
+REAL_TIME = 1
 
 
 class NoTurns(Exception):
@@ -166,10 +168,12 @@ def avoidance(mower, path, target, nogos, centre_line, test_shape, current,
 
 def main(args=None):
 
-    # Load objects and perimeter in Lat, Long format
-    test_shape = np.loadtxt("./perimeter.out", dtype=float, delimiter=",")
+    # Load objects and perimeter in Lat, Long format - load from file still?
+    test_shape = np.array([])
+
     test_shape = to_utm(test_shape)
-    path = np.loadtxt("./route.out", dtype=float, delimiter=",")
+    path = np.array([])
+
     path_len = len(path)
     current = 0  # int(path_len / 2) + 125
     skipped = 0
@@ -178,10 +182,35 @@ def main(args=None):
     # Init robot
     mower = Robot(path[current, 0], path[current, 1], target, Q_SIZE,
                   lidar_range, lidar_width, lidar_dist, move_dist, try_count,
-                  obj_gap, REAL_TIME, DIRECT)
+                  obj_gap, REAL_TIME)
     mower.per_poly = Polygon(test_shape)
     mower.visited = np.vstack((mower.visited, [path[0, 0], path[0, 1]]))
     mower.lidar_lines()
+
+    # Read virtual boundaries
+    # TODO ::
+    # - rename nogos to virtual boundaries
+    # - do we need to read files?
+    nogos = []
+
+    nogo_files = sorted(list(glob.glob("obstacle*")))
+    for i in nogo_files:
+        nogos.append(np.loadtxt(i, dtype=float, delimiter=","))
+    for i in range(len(nogos)):
+        nogos[i] = to_utm(nogos[i])
+    for n in range(len(nogos)):
+        if len(nogos[n]) > 2:
+            mower.nogo_polys.append(Polygon(nogos[n]))
+        else:
+            mower.nogo_polys.append(LineString(nogos[n]))
+    nogos.append(test_shape)  # Add perimeter as virtual boundary
+    # Setup pub/subs for ROS
+    rtk_sub = mower.rtk_sub
+    imu_sub = mower.imu_sub
+    move_pub = mower.move_pub
+    rclpy.spin(move_pub)
+    rclpy.spin(imu_sub)
+    rclpy.spin(rtk_sub)
 
     # If the robot detects an object to the right, turn left
     right_bear = list(range(4, 180, 4))
