@@ -40,6 +40,12 @@
 
   * Max tries methods have different logic and so the name and return need to be changed.
   * Some methods have grown too large and less succinct, some refactoring is needed.
+  * Currently, the ROS node uses the detect object method for 'detecting' the virtual boundaries, and the LiDAR system
+  to detect unknown, real objects. To do this the nogo-zones and perimeter are sometimes used the same, and sometimes not.
+  Additionally, in some cases a Polygon is used, in others a list of points. This is not clear and needs cleaning up.
+  * Checks to determine if moving crosses a virtual boundary are in place, but none are in place for detected objects. Again,
+  this is an artifact of combining the 'simulation' methods with the real-world sensor. Once the current methods have been tested, this
+  will be addressed. 
   
 # State Diagrams
 
@@ -177,6 +183,8 @@
   * 15/03/2023: Fixed issue with A* not providing a correct path
       * Testing more *realistic* values based on RTK inaccuracy and LiDAR ranges
   * 04/04/2023: Added method to reduce number of detected points to minimal set required for A*. Method needs more testing, but appears stable.
+  * 16/04/2023: Added interfacing with a LiDAR sensor
+      * Began working on a ROS node for the navigation system. 
 
  
 # TODO 

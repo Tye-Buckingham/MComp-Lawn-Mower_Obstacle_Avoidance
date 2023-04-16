@@ -91,7 +91,7 @@ class Robot():
         self.target = target
         self.inside = [0] * Q_SIZE
         self.Q_SIZE = Q_SIZE
-        self.virtual_bound_polys = []
+        self.nogo_polys = []
         self.per_poly = None
         self.dist_travelled = 0
         self.detected_ends = []
@@ -351,7 +351,7 @@ class Robot():
         virtual_bounds = []
         per_coords = self.per_poly.exterior.coords
         virtual_bounds.append(per_coords)
-        for n in self.virtual_bound_polys:
+        for n in self.nogo_polys:
             virtual_bounds.append(n.exterior.coords)
         for p in range(-1, len(per_coords) - 1):
             line = LineString([per_coords[p], per_coords[p + 1]])
@@ -607,9 +607,6 @@ class Robot():
             target: The next node in the route. It's current target
                 coordinates.
         """
-        # TODO : ROS publisher - send [dist, bearing] message
-        # self.move_pub
-
         target_loc = utm_bearing_dist([self.x, self.y], target)
         # If the heading is similar to the target
         # and the target is less than the given LiDAR range
@@ -622,20 +619,24 @@ class Robot():
         # Potential position
         pos = utm_coords([self.x, self.y], self.heading, metres)
         not_allowed = False
-        # Check if movement would result in passing through virtual virtual_bound boundary
-        for n in range(len(self.virtual_bound_polys)):
-            if self.virtual_bound_polys[n].contains(Point([pos['e'],
-                                                           pos['n']])):
+        path = LineString([[self.x, self.y], [pos['e'], pos['n']]])
+        # Check if movement would result in passing through nogo boundary
+        for n in range(len(self.nogo_polys)):
+            # If inside nogo
+            if self.nogo_polys[n].contains(Point([pos['e'], pos['n']])):
                 not_allowed = True
-            path = LineString([[self.x, self.y], [pos['e'], pos['n']]])
-            if path.crosses(self.virtual_bound_polys[n]):
+            # If crossing nogo
+            if path.crosses(self.nogo_polys[n]):
                 not_allowed = True
             if path.crosses(self.per_poly):
                 not_allowed = True
         # If outside perimeter
         if not self.per_poly.contains(Point([pos['e'], pos['n']])):
             not_allowed = True
-        # If so move away from the object
+        # If path crosses over perimeter boundary
+        if path.crosses(self.per_poly):
+            not_allowed = True
+        # If movement not allowed, move away from the object
         if not_allowed:
             pos = utm_coords([self.x, self.y], self.heading, -0.15)
             self.dist_travelled += 0.15

@@ -200,9 +200,9 @@ def main(args=None):
         virtual_bounds[i] = to_utm(virtual_bounds[i])
     for n in range(len(virtual_bounds)):
         if len(virtual_bounds[n]) > 2:
-            mower.virtual_bound_polys.append(Polygon(virtual_bounds[n]))
+            mower.nogo_polys.append(Polygon(virtual_bounds[n]))
         else:
-            mower.virtual_bound_polys.append(LineString(virtual_bounds[n]))
+            mower.nogo_polys.append(LineString(virtual_bounds[n]))
     virtual_bounds.append(test_shape)  # Add perimeter as virtual boundary
     # Setup pub/subs for ROS
     rtk_sub = mower.rtk_sub
@@ -320,7 +320,7 @@ def main(args=None):
     print("Total area: " + str(Polygon(test_shape).area) + " m^2")
     print("Total area covered: " + str(s.buffer(0.15)[0].area) + " m^2")
     missed = 0
-    for n in mower.virtual_bound_polys:
+    for n in mower.nogo_polys:
         missed += n.area
     print("Total area inside no-go: " + str(missed) + " m^2")
     print("Total distance travelled: " + str(mower.dist_travelled) + " m")
