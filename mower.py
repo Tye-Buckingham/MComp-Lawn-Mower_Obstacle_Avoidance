@@ -345,7 +345,7 @@ class Robot:
         matrix = [[1] * max(m_x, m_y)] * max(m_y, m_x)
         matrix = np.array(matrix)
 
-        if False:
+        if True:
             d = self.detected_points_to_lines()
             # Add all points on the reduce lines
             for line in d:
@@ -436,6 +436,7 @@ class Robot:
                              self.lidar_dist)
             inter.append(LineString([(self.x, self.y), (pos['e'], pos['n'])]))
 
+        # print(utm_dist([left['e'], left['n']], [right['e'], right['n']]))
         return [
             inter,
             Polygon([(self.x, self.y), (left['e'], left['n']),
@@ -540,7 +541,7 @@ class Robot:
             self.detected_points = list(set(self.detected_points))
             print("Detected Points: " + str(len(self.detected_points)))
             global DETECTED_POINTS_MULTIPLIER
-            if False:
+            if True:
                 if len(self.detected_points) > (500 *
                                                 DETECTED_POINTS_MULTIPLIER):
                     d = self.detected_points_to_lines()
@@ -609,8 +610,8 @@ class Robot:
         self.x = pos['e']
         self.y = pos['n']
         if self.REAL_TIME:
-            self.x += np.random.normal(-0.02, 0.02)
-            self.y += np.random.normal(-0.02, 0.02)
+            self.x += np.random.normal(0, 0.02)
+            self.y += np.random.normal(0, 0.02)
         self.tries += 1
 
     def find_target(self, nogos, target):
@@ -628,21 +629,27 @@ class Robot:
         else:
             target_heading = target_loc
             # Temporary fix to reduce getting stuck on flat walls
-            if target_heading > 340 and self.tries >= 3:
-                target_heading = 360 - target_heading
+            # if target_heading > 340 and self.tries >= 3:
+            #     target_heading = 360 - target_heading
             objs = self.detect_objects([nogos], target)
-            no_target = 1
+            diff = target_heading - self.heading
+            if diff < 0:
+                diff += 360
+            if diff > 180:
+                direction = -1
+            else:
+                direction = 1
             while len(objs) <= 0:
-                if target_heading < self.heading:
-                    self.heading += (2 * no_target)
-                else:
-                    self.heading -= (2 * no_target)
+                self.heading += direction
+                if self.heading > 360:
+                    self.heading = 0
+                if self.heading < 0:
+                    self.heading = 360
                 objs = self.detect_objects([nogos], target)
+                # If facing target and no obstacles, move direct
                 if abs(self.heading - target_heading) <= 3 and len(objs) <= 0:
                     self.heading = target_heading
                     break
-                else:
-                    no_target = -1
 
     def get_detected_line(self, target, nogos, heading, centre_line,
                           test_shape, current, img, path):
@@ -671,7 +678,7 @@ class Robot:
         n.append(test_shape)
         objs = self.detect_objects([n], path[target])
         if len(objs) != 0:
-            self.heading += heading
+            self.heading = heading
             objs = self.detect_objects([n], path[target])
         # If enough to make a shape, take the bounds of that shape
         if len(objs) == 0:

@@ -25,12 +25,12 @@ from shapely.geometry import LineString, Point, Polygon
 
 from consts import *
 from mower import Robot
-from utm_func import to_utm, utm_dist
+from utm_func import to_utm, utm_coords, utm_dist
 
 lidar_range = 60  # Number of LiDAR points (lasers) to generate
-lidar_dist = 1  # Distance of LiDAR in front of robot in metres
+lidar_dist = 1.0  # Distance of LiDAR in front of robot in metres
 move_dist = 0.3  # Distance to move per turn in metres
-lidar_width = 15  # The angle from the centre to the left and right most LiDAR points
+lidar_width = 30  # The angle from the centre to the left and right most LiDAR points
 obj_gap = 0.5  # Minimum distance before two objects are considered seperate
 try_count = 5  # Maximum number of movement tries before the robot may be considered stuck
 Q_SIZE = 10  # Queue used for off course determining
@@ -82,6 +82,21 @@ def printable_detected_ends(ends):
     return lines
 
 
+# def robot_shape(mower):
+#     centre = [mower.x, mower.y]
+#     angle = mower.heading
+#     diag = np.sqrt((0.1 * 0.1) + (0.1 * 0.1))
+#     top_left = utm_coords(centre, angle + 45, diag)
+#     top_right = utm_coords(centre, angle - 45, diag)
+#     bottom_right = utm_coords(centre, angle - 135, diag)
+#     bottom_left = utm_coords(centre, angle + 135, diag)
+#     return np.array([[top_left['e'], top_left['n']],
+#                      [top_right['e'], top_right['n']],
+#                      [bottom_right['e'], bottom_right['n']],
+#                      [bottom_left['e'], bottom_left['n']],
+#                      [top_left['e'], top_left['n']]])
+
+
 def print_graph(mower, test_shape, nogos, path, current, target, img,
                 detected):
     if not PRINT:
@@ -95,6 +110,8 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
              linestyle='dotted',
              alpha=0.5,
              color='orange')
+    # plt.plot(robot_shape(mower)[:, 0], robot_shape(mower)[:, 1], color='red')
+
     for nogo in nogos:
         plt.plot(nogo[:, 0], nogo[:, 1], color='black')
     plt.plot(test_shape[:, 0], test_shape[:, 1], color='blue')
@@ -301,11 +318,11 @@ def main(to_test, run_num):
         poly = Polygon(test_shape)
         min_x, min_y, max_x, max_y = poly.bounds
 
-        num_polygons = int(random.uniform(6, 6))
+        num_polygons = int(random.uniform(4, 4))
         print("Generating " + str(num_polygons) + " random nogos...")
         while len(nogos) < num_polygons:
-            width = random.uniform(1, 5)
-            height = random.uniform(1, 5)
+            width = random.uniform(1, len(nogos) + 1)
+            height = random.uniform(1, len(nogos) + 1)
             rand_x = random.uniform(min_x, max_x)
             rand_y = random.uniform(min_y, max_y)
 
@@ -336,7 +353,10 @@ def main(to_test, run_num):
         plt.scatter(path[current, 0], path[current, 1])
         plt.scatter(mower.x, mower.y, color='blue')
         plt.scatter(path[target, 0], path[target, 1])
-        plt.show()
+        try:
+            plt.show()
+        except:
+            plt.savefig('./Tests/' + str(run_num) + '_initial.png')
 
     # If the robot detects an object to the right, turn left
     right_bear = list(range(4, 180, 4))
@@ -496,7 +516,7 @@ if __name__ == "__main__":
     runs = 1
     if '-t' in sys.argv:
         to_test = True
-        runs = sys.argv[sys.argv.index('-t') + 1]
+        runs = int(sys.argv[sys.argv.index('-t') + 1])
     else:
         to_test = False
     if not '-v' in sys.argv:
@@ -510,12 +530,12 @@ if __name__ == "__main__":
         move_dist = 0.1  # RTK in-accuracy of +-20cm (with some simple noise added)
         Q_SIZE = 30  # This will depend on sampling rate - something thats hard to implement
         try_count = 10  # Needs testing to determine good value
-        lidar_dist = 0.3  # Based on LiDAR planned to use
-        lidar_width = 50  # Same as above
-        lidar_range = 100  # Same as above
+        lidar_dist = 0.5  # Based on LiDAR planned to use
+        lidar_width = 30  # Same as above
+        lidar_range = 60  # Same as above
     else:
         Q_SIZE = 10
-        lidar_dist = 1
+        lidar_dist = 1.0
         try_count = 5
         lidar_width = 15
         lidar_range = 60
