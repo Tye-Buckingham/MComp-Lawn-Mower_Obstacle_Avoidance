@@ -15,6 +15,7 @@ from pathfinding.core.diagonal_movement import DiagonalMovement
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from rclpy.node import Node
+from sensor_msgs.msg import NavSatFix, Vector3
 from shapely.geometry import LineString, Point, Polygon
 from std_msgs.msg import String
 
@@ -47,14 +48,16 @@ class MovePub(Node):
 class RTKSub(Node):
 
     def __init__(self, mower):
-        super().__init__('rtk_sub')
-        self.subscription = self.create_subscription(String, 'topic',
+        super().__init__('fix')
+        self.subscription = self.create_subscription(NavSatFix, 'topic',
                                                      self.listener_callback, 1)
         self.subscription
         self.assigned = mower
 
     def listener_callback(self, msg):
-        self.get_logger().info('I heard: %s' % msg.data)
+        fix = msg.data
+        self.assigned.x = fix.longitude
+        self.assigned.y = fix.latitude
 
 
 class IMUSub(Node):
@@ -74,7 +77,7 @@ class IMUSub(Node):
     def listener_callback(self, msg):
         robot_ori_euler_msg = msg.data
         heading = robot_ori_euler_msg.z
-        mower.heading = heading
+        self.assigned.heading = heading
 
 
 class Robot():
@@ -615,10 +618,9 @@ class Robot():
                 coordinates.
         """
         target_loc = utm_bearing_dist([self.x, self.y], target)
-        dist = 0.1
+        dist = metres
         # Potential position
-        pos = utm_coords([self.x, self.y], self.heading,
-                         metres)  # Make RTK sub
+        pos = utm_coords([self.x, self.y], self.heading, metres)
 
         not_allowed = False
 
@@ -648,7 +650,7 @@ class Robot():
         self.move_pub.publish_move(self.heading, dist)
         self.x = pos['e']  # Make RTK sub
         self.y = pos['n']  # Make RTK sub
-        self.dist_travelled += dist  # Calc from RTK sub
+        self.dist_travelled += dist  # Calc from RTK sub, maybe
         self.tries += 1
 
     def find_target(self, virtual_bounds, target):
@@ -669,10 +671,8 @@ class Robot():
         while len(objs) <= 0:
             if target_heading < self.heading:
                 self.move_pub.publish_move(self.heading + (2 * no_target), 0)
-                # self.heading += (2 * no_target)  # Make move CMD
             else:
                 self.move_pub.publish_move(self.heading - (2 * no_target), 0)
-                # self.heading -= (2 * no_target)  # Make move CMD
             objs = self.detect_objects([virtual_bounds], target)
             if abs(self.heading - target_heading) <= 3 and len(objs) <= 0:
                 break
@@ -707,7 +707,6 @@ class Robot():
         objs = self.detect_objects([n], path[target])
         if len(objs) != 0:
             self.move_pub.publish_move(self.heading + heading, 0)
-            # self.heading += heading  # Make move cmd
             objs = self.detect_objects([n], path[target])
         # If enough to make a shape, take the bounds of that shape
         if len(objs) == 0:
