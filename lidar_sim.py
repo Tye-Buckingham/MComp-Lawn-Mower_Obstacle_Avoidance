@@ -121,13 +121,13 @@ def print_graph(mower, test_shape, nogos, path, current, target, img,
     plt.plot(*centre_line.xy)
     # for p in random.sample(mower.detected_ends,
     #                        min(50, len(mower.detected_ends))):
-    print_ends = mower.detected_points_to_lines()
-    # printable_detected_ends(list(set(mower.detected_points)))
-    print("Printing " + str(len(print_ends)) + " detected ends")
-    for p in print_ends:
-        # plt.plot(np.array(p)[:, 0], np.array(p)[:, 1], color='red')
-        print("Printing : " + str(len(p.coords)) + " coords")
-        plt.plot(*p.coords.xy, color='red')
+    # print_ends = mower.detected_points_to_lines()
+    # # printable_detected_ends(list(set(mower.detected_points)))
+    # print("Printing " + str(len(print_ends)) + " detected ends")
+    # for p in print_ends:
+    #     # plt.plot(np.array(p)[:, 0], np.array(p)[:, 1], color='red')
+    #     print("Printing : " + str(len(p.coords)) + " coords")
+    #     plt.plot(*p.coords.xy, color='red')
 
     if mower.is_off_course():
         mower_colour = 'red'

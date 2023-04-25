@@ -636,15 +636,15 @@ class Robot:
             if diff < 0:
                 diff += 360
             if diff > 180:
-                direction = -1
+                direction = -2
             else:
-                direction = 1
+                direction = 2
             while len(objs) <= 0:
                 self.heading += direction
                 if self.heading > 360:
-                    self.heading = 0
+                    self.heading = 0 + abs(360 - self.heading)
                 if self.heading < 0:
-                    self.heading = 360
+                    self.heading = 360 - abs(self.heading)
                 objs = self.detect_objects([nogos], target)
                 # If facing target and no obstacles, move direct
                 if abs(self.heading - target_heading) <= 3 and len(objs) <= 0:
@@ -678,7 +678,7 @@ class Robot:
         n.append(test_shape)
         objs = self.detect_objects([n], path[target])
         if len(objs) != 0:
-            self.heading = heading
+            self.heading += heading
             objs = self.detect_objects([n], path[target])
         # If enough to make a shape, take the bounds of that shape
         if len(objs) == 0:

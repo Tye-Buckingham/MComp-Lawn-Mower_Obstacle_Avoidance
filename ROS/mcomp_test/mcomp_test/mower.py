@@ -60,14 +60,21 @@ class RTKSub(Node):
 class IMUSub(Node):
 
     def __init__(self, mower):
-        super().__init__('imu_sub')
-        self.subscription = self.create_subscription(String, 'topic',
+        # 4Hz in format robot_ori_euler_msg.z = yaw, robot_ori_euler_msg.y = pitch, robot_ori_euler_msg.x = roll
+        # self.robot_orientation_publisher  = self.create_publisher(
+        #     Vector3, # ROS Message
+        #     'Robot_Euler_Orientation', # Topic
+        #     10)
+        super().__init__('Robot_Euler_Orientation')
+        self.subscription = self.create_subscription(Vector3, 'topic',
                                                      self.listener_callback, 1)
         self.subscription
         self.assigned = mower
 
     def listener_callback(self, msg):
-        self.get_logger().info('I heard: %s' % msg.data)
+        robot_ori_euler_msg = msg.data
+        heading = robot_ori_euler_msg.z
+        mower.heading = heading
 
 
 class Robot():
@@ -608,19 +615,17 @@ class Robot():
                 coordinates.
         """
         target_loc = utm_bearing_dist([self.x, self.y], target)
-        # If the heading is similar to the target
-        # and the target is less than the given LiDAR range
-        # move directly to the target as there are no obstacles
-        # in the way
-        if self.heading == target_loc[
-                'bg'] and target_loc['dist_2d'] < self.move_dist:
-            self.clear_q()
-            metres = (target_loc['dist_2d'] - 0.05)
+        dist = 0.1
         # Potential position
-        pos = utm_coords([self.x, self.y], self.heading, metres)
+        pos = utm_coords([self.x, self.y], self.heading,
+                         metres)  # Make RTK sub
+
         not_allowed = False
+
+        # Intended path of the robot
         path = LineString([[self.x, self.y], [pos['e'], pos['n']]])
-        # Check if movement would result in passing through nogo boundary
+
+        # Check if movement would result in passing through nogo boundary or virtual perimeter
         for n in range(len(self.nogo_polys)):
             # If inside nogo
             if self.nogo_polys[n].contains(Point([pos['e'], pos['n']])):
@@ -628,8 +633,7 @@ class Robot():
             # If crossing nogo
             if path.crosses(self.nogo_polys[n]):
                 not_allowed = True
-            if path.crosses(self.per_poly):
-                not_allowed = True
+
         # If outside perimeter
         if not self.per_poly.contains(Point([pos['e'], pos['n']])):
             not_allowed = True
@@ -638,11 +642,13 @@ class Robot():
             not_allowed = True
         # If movement not allowed, move away from the object
         if not_allowed:
-            pos = utm_coords([self.x, self.y], self.heading, -0.15)
-            self.dist_travelled += 0.15
+            dist = -0.15  # Make RTK sub
+
         # Send move command and update position using RTK ROS node
-        self.x = pos['e']
-        self.y = pos['n']
+        self.move_pub.publish_move(self.heading, dist)
+        self.x = pos['e']  # Make RTK sub
+        self.y = pos['n']  # Make RTK sub
+        self.dist_travelled += dist  # Calc from RTK sub
         self.tries += 1
 
     def find_target(self, virtual_bounds, target):
@@ -662,12 +668,13 @@ class Robot():
         no_target = 1
         while len(objs) <= 0:
             if target_heading < self.heading:
-                self.heading += (2 * no_target)
+                self.move_pub.publish_move(self.heading + (2 * no_target), 0)
+                # self.heading += (2 * no_target)  # Make move CMD
             else:
-                self.heading -= (2 * no_target)
+                self.move_pub.publish_move(self.heading - (2 * no_target), 0)
+                # self.heading -= (2 * no_target)  # Make move CMD
             objs = self.detect_objects([virtual_bounds], target)
             if abs(self.heading - target_heading) <= 3 and len(objs) <= 0:
-                self.heading = target_heading
                 break
             else:
                 no_target = -1
@@ -699,7 +706,8 @@ class Robot():
         n.append(test_shape)
         objs = self.detect_objects([n], path[target])
         if len(objs) != 0:
-            self.heading += heading
+            self.move_pub.publish_move(self.heading + heading, 0)
+            # self.heading += heading  # Make move cmd
             objs = self.detect_objects([n], path[target])
         # If enough to make a shape, take the bounds of that shape
         if len(objs) == 0:
