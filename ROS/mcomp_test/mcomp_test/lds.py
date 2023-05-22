@@ -4,6 +4,8 @@ import sys
 
 import serial
 
+offset = 0.12  # 12 cm offset from the front of the robot
+
 
 class LFCDLaser:
 
@@ -82,8 +84,9 @@ class LFCDLaser:
                                 # Last two bytes represent the uncertainty or intensity, might also be pixel area of target...
                                 # intensity = (byte3 << 8) + byte2
                                 range_ = (byte3 << 8) + byte2
-                                ret.append([359 - index, range_ / 1000
-                                            ])  # converted to meters
+                                ret.append([
+                                    359 - index, (range_ / 1000) - offset
+                                ])  # converted to meters
                                 # print(f"r[{359-index}]={range_/1000},", end='')
 
                     # time_increment = motor_speed/good_sets/1e8
