@@ -114,7 +114,7 @@ class Robot():
         self.try_count = try_count
         self.obj_gap = obj_gap
         self.REAL_TIME = REAL_TIME
-        self.lidar = LFCDLaser("/dev/ttyUSB0", 230400)  # lds lidar driver
+        self.lidar = LFCDLaser("/dev/ttyUSB2", 230400)  # lds lidar driver
 
     # Route traversal functions start
     def enqueue(self, val):
