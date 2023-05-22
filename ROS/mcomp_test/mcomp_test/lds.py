@@ -4,7 +4,7 @@ import sys
 
 import serial
 
-offset = 0.12  # 12 cm offset from the front of the robot
+offset = 0.17  # 17 cm offset from the front of the robot
 
 
 class LFCDLaser:
